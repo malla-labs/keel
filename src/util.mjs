@@ -1,0 +1,118 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+
+export class KeelError extends Error {
+  constructor(message, hint) {
+    super(message);
+    this.hint = hint;
+  }
+}
+
+export function fail(message, hint) {
+  throw new KeelError(message, hint);
+}
+
+export function today() {
+  if (process.env.KEEL_TODAY) return process.env.KEEL_TODAY;
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+export function readJSON(file, fallback) {
+  if (!fs.existsSync(file)) {
+    if (fallback !== undefined) return structuredClone(fallback);
+    fail(`Missing file: ${file}`);
+  }
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    fail(`Invalid JSON in ${file}: ${e.message}`);
+  }
+}
+
+export function writeJSON(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
+}
+
+export function writeText(file, text) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text);
+}
+
+/** Converts a glob (`**`, `*`, `?`, `{a,b}`) to an anchored RegExp on `/` paths. */
+export function globToRegex(glob) {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        const slash = glob[i + 2] === '/';
+        re += slash ? '(?:.*/)?' : '.*';
+        i += slash ? 2 : 1;
+      } else re += '[^/]*';
+    } else if (c === '?') re += '[^/]';
+    else if (c === '{') {
+      const end = glob.indexOf('}', i);
+      if (end === -1) { re += '\\{'; continue; }
+      re += '(?:' + glob.slice(i + 1, end).split(',').map(escapeRe).join('|') + ')';
+      i = end;
+    } else re += escapeRe(c);
+  }
+  return new RegExp('^' + re + '$');
+}
+
+function escapeRe(s) {
+  return s.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+}
+
+export function matchesAny(rel, globs) {
+  const p = rel.split(path.sep).join('/');
+  return globs.some((g) => globToRegex(g).test(p));
+}
+
+/** Lists files under root (relative, `/` separated), skipping ignored globs and .git. */
+export function walk(root, ignore = []) {
+  const out = [];
+  const stack = [''];
+  while (stack.length) {
+    const rel = stack.pop();
+    const abs = path.join(root, rel);
+    let entries;
+    try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.name === '.git') continue;
+      if (e.isDirectory()) {
+        if (matchesAny(r + '/', ignore) || matchesAny(r, ignore)) continue;
+        stack.push(r);
+      } else if (e.isFile() && !matchesAny(r, ignore)) out.push(r);
+    }
+  }
+  return out.sort();
+}
+
+/** Files changed against HEAD plus untracked ones, or null outside a git repo. */
+export function gitChanged(root) {
+  try {
+    const run = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const tracked = run(['diff', '--name-only', 'HEAD']).split('\n');
+    const untracked = run(['ls-files', '--others', '--exclude-standard']).split('\n');
+    return [...new Set([...tracked, ...untracked].filter(Boolean))].sort();
+  } catch {
+    return null;
+  }
+}
+
+export function slugify(title) {
+  return title
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80)
+    .replace(/-+$/, '');
+}

@@ -1,0 +1,18 @@
+{
+  "name": "keel",
+  "owner": {
+    "name": "Malla Labs",
+    "url": "https://github.com/malla-labs"
+  },
+  "plugins": [
+    {
+      "name": "keel",
+      "source": "./",
+      "description": "Decisions, owner questions, scoped features, targeted tests, verification gates and fresh-context review for any project.",
+      "version": "0.6.0"
+    }
+  ],
+  "metadata": {
+    "description": "keel: a Claude Code plugin that keeps AI work on a project stable."
+  }
+}

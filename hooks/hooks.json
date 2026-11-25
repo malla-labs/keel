@@ -1,0 +1,17 @@
+{
+  "description": "keel: brief at session start and after compaction, a decision reminder per prompt, the scope and dependency guard, and the stop gate.",
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "startup|resume|clear|compact", "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/keel\" hook brief", "timeout": 20 } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/keel\" hook prompt", "timeout": 10 } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Edit|Write|NotebookEdit|Bash", "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/keel\" hook guard", "timeout": 10 } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/keel\" hook stop", "timeout": 120 } ] }
+    ]
+  }
+}

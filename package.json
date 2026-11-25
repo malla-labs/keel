@@ -1,0 +1,21 @@
+{
+  "name": "keel",
+  "version": "0.6.0",
+  "private": true,
+  "type": "module",
+  "description": "Decisions, questions, features and guards for any project, as a Claude Code plugin.",
+  "bin": {
+    "keel": "bin/keel"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/malla-labs/keel.git"
+  }
+}
