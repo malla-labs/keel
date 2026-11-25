@@ -60,6 +60,10 @@ Run `keel help` for the summary. All commands work from any folder inside the pr
 
 Options take a value as the next argument or with `=` (`--area=S`). A repeated option becomes a list (only `--option` accepts that). Results print as JSON on stdout; errors print `keel: <message>` and a hint on stderr with exit code 1.
 
+### `keel version` (or `--version`, `-v`)
+
+Prints the installed keel version. The session brief's first line shows it too (`keel 0.6.1 · <project> · …`).
+
 ### `keel rules [rules|questions|briefing]`
 
 Prints keel's working rules, the question pattern, or the subagent brief template. Skills run these instead of reading plugin files, so no file-read permission is needed.

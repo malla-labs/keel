@@ -1,5 +1,9 @@
 import fs from 'node:fs';
 import { fail, writeText } from './util.mjs';
+
+function version() {
+  try { return JSON.parse(fs.readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version; } catch { return '?'; }
+}
 import { loadDecisions } from './decisions.mjs';
 import { loadQuestions } from './questions.mjs';
 import { loadFeatures, STATUSES } from './features.mjs';
@@ -105,7 +109,7 @@ export function brief(project) {
   const count = (st) => Object.values(features).filter((f) => f.status === st).length;
   const owner = store.open.filter((q) => q.kind === 'product');
   const lines = [
-    `keel · ${cfg.name || 'project'} · mode ${cfg.mode}${cfg.pattern ? ` · pattern ${cfg.pattern}` : ''}`,
+    `keel ${version()} · ${cfg.name || 'project'} · mode ${cfg.mode}${cfg.pattern ? ` · pattern ${cfg.pattern}` : ''}`,
     `Features: ${STATUSES.filter(count).map((s) => `${count(s)} ${s}`).join(', ') || 'none'}. Decisions: ${records.length} (${records.filter((r) => r.status === 'proposed').length} proposed).`,
     `Open questions: ${owner.length} for the owner, ${store.open.length - owner.length} engineering.`,
     cfg.sessionOwner

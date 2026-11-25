@@ -24,7 +24,7 @@ claude plugin marketplace add malla-labs/keel
 claude plugin install keel@keel
 ```
 
-Restart Claude Code. Requires Node 20 or later.
+Restart Claude Code. Requires Node 20 or later. Check the version with `claude plugin list`, or `keel version` from a Claude session.
 
 ## Quick start
 

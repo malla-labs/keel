@@ -1,6 +1,6 @@
 {
   "name": "keel",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "type": "module",
   "description": "Decisions, questions, features and guards for any project, as a Claude Code plugin.",

@@ -9,7 +9,7 @@
       "name": "keel",
       "source": "./",
       "description": "Decisions, owner questions, scoped features, targeted tests, verification gates and fresh-context review for any project.",
-      "version": "0.6.0"
+      "version": "0.6.1"
     }
   ],
   "metadata": {

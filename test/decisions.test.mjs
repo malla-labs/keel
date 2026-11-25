@@ -68,3 +68,12 @@ test('the brief says whether the person in the session is the owner', async () =
   const solo = await project(['--owner', 'josue', '--session-owner']);
   assert.match((await keel(solo, ['brief'])).out, /Owner: the person in this session is the owner \(josue\)/);
 });
+
+test('keel reports its version, and the brief shows it', async () => {
+  const fs = await import('node:fs');
+  const v = JSON.parse(fs.readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version;
+  const dir = await project();
+  assert.equal((await keel(dir, ['version'])).out, v);
+  assert.equal((await keel(dir, ['--version'])).out, v);
+  assert.match((await keel(dir, ['brief'])).out, new RegExp(`^keel ${v.replace(/\./g, '\\.')} · demo`));
+});

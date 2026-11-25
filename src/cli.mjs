@@ -17,6 +17,7 @@ import { coverage, fingerprint, formatProgress, logEvent, markVerified, progress
 
 const HELP = `keel: decisions, questions, features and guards for a project.
 
+  keel version | --version         (the installed keel version)
   keel rules [rules|questions|briefing]   (print keel's working rules, the question pattern, the subagent brief)
   keel init [--name N] [--mode full|light] [--pattern P] [--owner NAME] [--session-owner]
   keel decision next <AREA>
@@ -52,6 +53,11 @@ const HELP = `keel: decisions, questions, features and guards for a project.
 
 const PROMPT_REMINDER = 'keel: if this message states a rule, a number, a decision or an answer, run /keel:decide (or /keel:answer) before building.';
 
+/** The plugin's version, from its manifest. */
+export function version() {
+  return JSON.parse(fs.readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version;
+}
+
 /** Parses argv into positionals and options; repeated options become arrays. */
 export function parseArgs(argv) {
   const pos = [];
@@ -78,6 +84,7 @@ function one(v, name) {
 }
 
 export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n'), err: (s) => process.stderr.write(s + '\n'), stdin: readStdin }) {
+  if (argv[0] === '--version' || argv[0] === '-v') argv = ['version'];
   const { pos, opts } = parseArgs(argv);
   const [cmd, sub, ...rest] = pos;
   const json = (v) => io.out(JSON.stringify(v, null, 2));
@@ -86,6 +93,9 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
       case undefined:
       case 'help':
         io.out(HELP);
+        return 0;
+      case 'version':
+        io.out(version());
         return 0;
       case 'init':
         json(init(process.cwd(), { name: one(opts.name, 'name'), mode: one(opts.mode, 'mode'), pattern: one(opts.pattern, 'pattern'), sessionOwner: Boolean(opts.sessionOwner), owners: opts.owner ? [].concat(opts.owner) : undefined }));
