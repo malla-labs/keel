@@ -103,3 +103,15 @@ test('review findings are written by the CLI only: the guard blocks hand edits',
   assert.equal(r.code, 2);
   assert.match(r.err, /written by the keel CLI only/);
 });
+
+test('a superseded decision linked to a feature does not need a citation; its replacement does', async () => {
+  const dir = await project();
+  await verifiedFeature(dir, 'booking.list', 'bookings');
+  await keel(dir, ['decision', 'new', '--area', 'P', '--title', 'Bookings are cached in memory', '--kind', 'engineering', '--by', 'lead', '--status', 'accepted', '--decision', 'Memory.']);
+  await keel(dir, ['decision', 'new', '--area', 'P', '--title', 'Bookings are cached in Redis', '--kind', 'engineering', '--by', 'lead', '--status', 'accepted', '--decision', 'Redis.', '--supersedes', 'P-001']);
+  await keel(dir, ['feature', 'set', 'booking.list', '--decision', 'P-001,P-002']);
+  write(dir, 'src/bookings/a.ts', '// Decision: P-002\nexport const a = 1;\n');
+  await keel(dir, ['feature', 'verified', 'booking.list', '--command', 'npm test']);
+  const r = await keel(dir, ['feature', 'set', 'booking.list', '--status', 'built']);
+  assert.equal(r.code, 0, r.err);
+});

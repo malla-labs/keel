@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { loadDecisions } from './decisions.mjs';
 import { citedDecisions, fail, matchesAny as matchesGlobs, readJSON, today, walk as walkFiles, writeJSON } from './util.mjs';
 
 export const STATUSES = ['planned', 'building', 'built', 'mocked', 'dropped'];
@@ -146,7 +147,9 @@ export function builtProblems(project, id, f, { coverage, fingerprint }) {
   if (untested.length) p.push(`checks without a test: ${untested.map((n) => '#' + n).join(', ')}`);
   if (!f.verified) p.push('no verification recorded: run the verify command, then `keel feature verified ' + id + ' --command "<it>"`');
   else if (fingerprint(project, f) !== f.verified.fingerprint) p.push('the verification is stale: files changed after it; verify again');
-  const decisions = f.decisions ?? [];
+  // A superseded record is cited through the record that replaced it, which the feature links too.
+  const superseded = new Set(loadDecisions(project).filter((r) => r.status === 'superseded').map((r) => r.id));
+  const decisions = (f.decisions ?? []).filter((d) => !superseded.has(d));
   if (decisions.length && f.files?.length) {
     const cited = new Set(walkFeatureCode(project, f).flatMap(citedDecisions));
     const uncited = decisions.filter((d) => !cited.has(d));
