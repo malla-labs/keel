@@ -6,6 +6,7 @@ import { indexDecisions, loadDecisions } from './decisions.mjs';
 import { loadQuestions, questionProblems, renderOpenQuestionsText } from './questions.mjs';
 import { featureProblems, linkProblem, loadFeatures } from './features.mjs';
 import { renderStateText } from './state.mjs';
+import { architecturePath, boundaryProblems, loadArchitecture, moduleOf, renderArchitectureText } from './architecture.mjs';
 
 const COVERS_RE = /\bCovers:\s*([^\n*]+)/g;
 const REF_RE = /[A-Z]-\d+|[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*#\d+/g;
@@ -98,8 +99,21 @@ export function check(project, { changed = false, strict = false } = {}) {
   const codeFiles = files.filter((f) => matchesAny(f, cfg.code) && !testFiles.includes(f));
   const covered = new Map();
 
+  // Architecture: with modules defined, every code file belongs to one, and imports respect "may use".
+  const arch = loadArchitecture(project);
+  const hasModules = Object.keys(arch.modules).length > 0;
+  if (hasModules) {
+    const archFile = architecturePath(project);
+    const current = fs.existsSync(archFile) ? fs.readFileSync(archFile, 'utf8') : null;
+    if (current !== renderArchitectureText(project, current)) err(rel(archFile), 'is out of date with .keel/architecture.json: run `keel render`');
+  }
+
   for (const f of codeFiles) {
     const lines = readLines(root, f);
+    if (hasModules) {
+      if (!moduleOf(arch, f)) warn(f, 'belongs to no module: add its folder to a module (`keel module set <name> --files …`) or move it');
+      for (const b of boundaryProblems(project, arch, f, lines)) err(`${f}:${b.line}`, b.message, lines[b.line - 1]?.trim() ?? '');
+    }
     lines.forEach((line, i) => {
       for (const id of citedDecisions(line)) citeProblem(id, `${f}:${i + 1}`);
       for (const n of citedQuestions(line)) questionRefProblem(n, `${f}:${i + 1}`);

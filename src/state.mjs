@@ -1,3 +1,4 @@
+import { loadArchitecture } from './architecture.mjs';
 import fs from 'node:fs';
 import { fail, writeText } from './util.mjs';
 
@@ -116,6 +117,7 @@ export function brief(project) {
       ? `Owner: the person in this session is the owner (${cfg.owners[0]}); product rules they state are accepted with --by ${cfg.owners[0]} and their quote.`
       : `Owner: ${cfg.owners.join(', ')}. The person in this session is not known to be an owner: a product rule they state is --status proposed, unless they say in this session that they are the owner.`,
     `Progress: ${progress(project).overall}% overall.`,
+    architectureLine(project),
     scope ? `Scope: ${scope.feature ?? '(deps only)'}${scope.files ? ` — ${scope.files.join(', ')}` : ''}${scope.deps.length ? ` — deps allowed by ${scope.deps.join(', ')}` : ''}.` : 'Scope: none active.',
     'Rules: the owner states a rule → `/keel:decide` before building. Product questions → `/keel:ask`, in its pattern. Tests cite `Covers:`. Done means `keel check` passes.',
   ];
@@ -125,4 +127,11 @@ export function brief(project) {
     lines.splice(1, 0, '', 'The project:', ...s.slice(0, 15), ...(s.length > 15 ? [`… (${s.length - 15} more lines in ${project.cfg.state})`] : []), '');
   } else lines.push('No project summary yet: run /keel:adopt (existing code) or give the project brief and register it.');
   return lines.join('\n');
+}
+
+/** One line for the brief: the modules and where the rules are, or that none are defined. */
+function architectureLine(project) {
+  const names = Object.keys(loadArchitecture(project).modules);
+  if (!names.length) return 'Architecture: no modules defined. Before the first feature, settle the stack and layout with the owner, record them with `/keel:decide`, and add the modules with `keel module add`.';
+  return `Architecture: ${names.length} modules (${names.join(', ')}); each imports only what docs/ARCHITECTURE.md allows. New code goes in a module.`;
 }

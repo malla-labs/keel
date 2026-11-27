@@ -84,7 +84,7 @@ function judgeFile(project, scope, rel, content) {
   if (rel === '.keel/project.json') {
     return { allow: false, reason: '.keel/project.json holds the rules that check your work; a change cannot edit its own checks. Ask the user to change it.' };
   }
-  if (['.keel/questions.json', '.keel/scope.json', '.keel/features.json', '.keel/baseline.json', '.keel/history.jsonl', '.keel/reviews.json'].includes(rel)) {
+  if (['.keel/questions.json', '.keel/scope.json', '.keel/features.json', '.keel/baseline.json', '.keel/history.jsonl', '.keel/reviews.json', '.keel/architecture.json'].includes(rel)) {
     return { allow: false, reason: `${rel} is written by the keel CLI only. Use \`keel question …\`, \`keel feature …\` or \`keel scope …\`.` };
   }
   if (cfg.mode === 'light') return { allow: true };

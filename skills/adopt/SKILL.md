@@ -36,9 +36,10 @@ Run `keel rules` first and follow it. **Change no code and no test.** This skill
    - The project already has decision records in another folder: do not copy them. Tell the user to point `decisions` in `.keel/project.json` at that folder and set `legacyBelow`.
    - Look for rules actively (the list in step 3): a working project always has some. Record at most 15, those a user or a teammate would notice first.
    - A rule found in code or docs with no record: `keel decision new --area … --kind … --by lead --status proposed --title "…" --decision "…" --why "Found in <path:line>." --code "<path>"`. Never `accepted`, never a quote: the owner did not say it. Link it: `keel feature set <id> --decision <ID>`.
-10. Unknowns that block a feature: `/keel:ask`, in the pattern, at most 5, the most blocking first. Unknowns that block nothing go in the summary's last line as "Not known yet: …".
+10. **Modules:** from the layout `keel scan` printed, register the parts the code already has (2 to 12): `keel module add <name> --about "…" --files "<globs>" --uses <what its imports show> --decision <ID>`, with one proposed engineering record describing the layout ("Found in the folder layout and the imports."). Run `keel check`: an import that crosses the layout you wrote means the layout is wrong, not the code; adjust `--uses` until the existing code passes, and list the surprising dependencies for the owner.
+11. Unknowns that block a feature: `/keel:ask`, in the pattern, at most 5, the most blocking first. Unknowns that block nothing go in the summary's last line as "Not known yet: …".
 
 ## 4. Close
 
-11. `keel adopted`, so the weekly pace does not count what already existed. Then `keel check`. If it fails only on old tests that cite nothing (`test cites nothing`), run `keel baseline` and say how many errors were baselined. Fix any other error.
-12. Show `keel progress` in a code block, then at most 6 lines: features registered by status, checks linked, rules proposed (they need the owner: `keel decision accept <ID> --by <owner> --quote "…"`), questions asked, what to set in `.keel/project.json` (`owners`, `verify.quick`, `decisions`).
+12. `keel adopted`, so the weekly pace does not count what already existed. Then `keel check`. If it fails only on old tests that cite nothing (`test cites nothing`), run `keel baseline` and say how many errors were baselined. Fix any other error.
+13. Show `keel progress` in a code block, then at most 6 lines: features registered by status, checks linked, rules proposed (they need the owner: `keel decision accept <ID> --by <owner> --quote "…"`), questions asked, what to set in `.keel/project.json` (`owners`, `verify.quick`, `decisions`).

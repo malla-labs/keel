@@ -14,7 +14,7 @@ Run `keel rules` first and follow it. One feature at a time.
 2. **Risk.** Set it: `keel feature set <id> --risk high` for sign-in, sessions, payments, permissions, uploads, data deletion, or anything strangers reach over the network; `--risk low` for copy, styles and docs; leave `normal` otherwise. Risk decides how deep `/keel:review` looks.
 3. **Checks first.** Write each behaviour the feature must have as one check: `keel feature check <id> --add "<one behaviour, observable>"`. Take them from the user's words and the decisions; do not invent edge cases the user did not ask for. **High risk adds the abuse cases**, one check each, because nobody asks for them and review finds them too late: guessing and flooding have a limit; every action checks who is asking; cross-site requests are refused; a malformed or huge input is refused without a crash; sign-out and expiry end access everywhere. A limit's number is the owner's: `/keel:ask` with a default. Show the list to the user before building.
 4. **Decisions.** Any rule the checks depend on and no record states: `/keel:decide` (engineering) or `/keel:ask` (product, with a reversible default). Link them: `keel feature set <id> --decision <IDs> --status building`.
-5. **Lock the scope:** `keel scope start <id>`. If the project has a pattern pack (`pattern` in `.keel/project.json`), follow its layout.
+5. **Lock the scope:** `keel scope start <id>`. New code goes into the module that owns its job (`keel module list`, `docs/ARCHITECTURE.md`), and imports only what that module may use. A feature that needs a new module or a new dependency between modules records it first: `/keel:decide`, then `keel module add|set … --decision <ID>`.
 
 ## 2. Build
 

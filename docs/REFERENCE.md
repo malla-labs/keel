@@ -62,7 +62,7 @@ Options take a value as the next argument or with `=` (`--area=S`). A repeated o
 
 ### `keel version` (or `--version`, `-v`)
 
-Prints the installed keel version. The session brief's first line shows it too (`keel 0.8.0 · <project> · …`).
+Prints the installed keel version. The session brief's first line shows it too (`keel 0.9.0 · <project> · …`).
 
 ### `keel rules [rules|questions|briefing]`
 
@@ -145,6 +145,17 @@ Records that the feature's verification passed: the command, the time, a fingerp
 
 Runs `verify.quick` (or `verify.full`), then `verify.lint` and `verify.types` when set, in the project root, and stops at the first failure. Prints `PASS`/`FAIL` per step with its last three output lines; exits 1 on a failure. `keel feature verified <id> --run [--full]` does the same and, when every step passed, records the verification itself: the commands joined with `&&` and each step's last line as evidence. `--stale --run` does it for every stale feature.
 
+### `keel module add|set|list`
+
+The architecture as records. `.keel/architecture.json` (CLI only) holds each module: what it is for (`--about`), the files it owns (`--files` globs), the modules it may import (`--uses`) and the decisions behind it (`--decision`, required on every add and set). `docs/ARCHITECTURE.md` gets a generated table between `<!-- keel:architecture -->` markers; write diagrams and reasons around it.
+
+With at least one module, `keel check`:
+- fails on a relative JS/TS import (`import … from './x'`, `export … from`, `import('./x')`, `require('./x')`) from one module into another its `uses` does not list;
+- warns on a code file that belongs to no module;
+- fails when `ARCHITECTURE.md` no longer matches (`keel render` rewrites it).
+
+Package imports and path aliases are not checked yet. The brief names the modules, or says none are defined.
+
 ### Feature risk
 
 `keel feature add|set <id> --risk low|normal|high` (default `normal`). `/keel:review` reviews `low` with the correctness lens; `normal` with correctness, rules and quality; `high` adds security and regressions and two verifiers. `/keel:feature` adds abuse-case checks (limits, authorization, cross-site requests, malformed input, sign-out) to a `high` feature.
@@ -175,7 +186,7 @@ An open `important` finding blocks `feature set <id> --status built`. `keel prog
 
 ### History log
 
-`.keel/history.jsonl`, one JSON event per line, written by the CLI only: `decision.new`, `decision.accept`, `question.add`, `question.answer`, `question.withdraw`, `feature.add`, `feature.check`, `feature.status` (with `from` and `to`), `feature.verified` (with `evidence`, or `stale: true`), `feature.link`, `review.finding`, `review.resolve`, `summary.set`, `adopt.done`, `githooks.install`, `scope.start`, `scope.widen` (with the reason), `scope.deps`, `scope.clear`. Each has `at` (ISO time) and the ids involved.
+`.keel/history.jsonl`, one JSON event per line, written by the CLI only: `decision.new`, `decision.accept`, `question.add`, `question.answer`, `question.withdraw`, `feature.add`, `feature.check`, `feature.status` (with `from` and `to`), `feature.verified` (with `evidence`, or `stale: true`), `feature.link`, `review.finding`, `review.resolve`, `module.add`, `module.set`, `summary.set`, `adopt.done`, `githooks.install`, `scope.start`, `scope.widen` (with the reason), `scope.deps`, `scope.clear`. Each has `at` (ISO time) and the ids involved.
 
 ### `keel scope …`
 
@@ -290,6 +301,7 @@ Status values: `proposed (<who>, <date>)`, `accepted (<who>, <date>)`, `supersed
 | Questions | Missing parts of the pattern; wrong option keys; not exactly one recommended; unknown feature or decision; number above `lastId`; duplicate numbers; `OPEN_QUESTIONS.md` out of date | |
 | Features | Bad id or status; no title; a cited decision that does not exist | |
 | State | — (the generated block is refreshed in place, so progress stays current) | |
+| Architecture | An import across modules that `uses` does not allow; `ARCHITECTURE.md` out of date | A code file in no module |
 | Code | `Decision: <ID>` that does not exist, or a proposed product rule (every id in a `Decision: A, B` list counts) | Cites a superseded rule; a comment names a `Q-n` that is answered, withdrawn or never asked (only comments are read, so `"Q-7"` in a string is ignored) |
 | Tests | A case that cites nothing (by `tests.require`); `Covers:` naming a missing feature, check or decision | A check of a `building`/`built` feature with no test, or more than one |
 
@@ -300,7 +312,7 @@ Status values: `proposed (<who>, <date>)`, `accepted (<who>, <date>)`, `supersed
 | Call | Blocked when | In light mode |
 |---|---|---|
 | Edit/Write of `OPEN_QUESTIONS.md` | Always: it is generated | Blocked |
-| Edit/Write of `.keel/questions.json`, `features.json`, `scope.json`, `baseline.json`, `history.jsonl`, `reviews.json` | Always: CLI only | Blocked |
+| Edit/Write of `.keel/questions.json`, `features.json`, `scope.json`, `baseline.json`, `history.jsonl`, `reviews.json`, `architecture.json` | Always: CLI only | Blocked |
 | Edit/Write of `.keel/project.json` | Always: a change cannot edit its own checks | Blocked |
 | Bash writing to those `.keel` files (`>`, `tee`, `sed -i`, `rm`, `mv`, `cp`, `truncate`) | Always | Blocked |
 | Edit/Write of a manifest file | No `scope deps` decision. For `package.json`, only when a dependency field (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`, `overrides`, `resolutions`) changes; scripts are free | Allowed |

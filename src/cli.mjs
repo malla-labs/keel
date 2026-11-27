@@ -16,6 +16,7 @@ import { init } from './init.mjs';
 import { coverage, fingerprint, formatProgress, logEvent, markVerified, progress } from './progress.mjs';
 import { addFinding, formatFinding, loadReviews, openFindings, resolveFinding } from './reviews.mjs';
 import { formatVerify, runVerify, verifyRecord } from './verify.mjs';
+import { formatModules, loadArchitecture, renderArchitecture, setModule } from './architecture.mjs';
 
 const HELP = `keel: decisions, questions, features and guards for a project.
 
@@ -47,6 +48,9 @@ const HELP = `keel: decisions, questions, features and guards for a project.
                   [--where PATH:LINE] [--reason WHY]   (a finding from /keel:review, with the verifier's verdict)
   keel review resolve <R-n> --fixed WHAT | --answered WHY
   keel review list [--open] [--feature F]
+  keel module add <NAME> --about TEXT --files GLOBS [--uses MODULES] --decision ID   (a part of the architecture)
+  keel module set <NAME> [--about TEXT] [--files GLOBS] [--uses MODULES] --decision ID
+  keel module list                (modules, their files and what each may import; docs/ARCHITECTURE.md is generated)
   keel progress [FEATURE] [--json]           (feature, scope and development progress)
   keel scope start <FEATURE> [--files GLOBS] | widen <GLOB> --reason WHY | deps <DECISION> | clear | show
   keel check [--changed] [--strict] [--json]
@@ -229,6 +233,17 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
         json(r);
         return 0;
       }
+      case 'module': {
+        const o = Object.fromEntries(Object.entries(opts).map(([k, v]) => [k, v === true ? true : one(v, k)]));
+        if (sub === 'add' || sub === 'set') {
+          const r = setModule(project, rest[0], o, { create: sub === 'add' });
+          logEvent(project, `module.${sub}`, { module: r.module, files: r.files, uses: r.uses, decision: o.decision });
+          json(r);
+          return 0;
+        }
+        if (sub === 'list' || sub === undefined) { io.out(formatModules(loadArchitecture(project))); return 0; }
+        break;
+      }
       case 'verify': {
         const ran = runVerify(project, { full: Boolean(opts.full) });
         io.out(formatVerify(ran));
@@ -294,6 +309,7 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
       case 'render':
         renderOpenQuestions(project);
         renderState(project);
+        if (Object.keys(loadArchitecture(project).modules).length) renderArchitecture(project);
         io.out('Rendered.');
         return 0;
       case 'brief':
