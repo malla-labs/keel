@@ -1,7 +1,8 @@
+import { holderName } from './team.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fail, matchesAny, readJSON, today, writeJSON } from './util.mjs';
-import { getFeature, list, loadFeatures } from './features.mjs';
+import { getFeature, list, loadFeatures, saveFeatures } from './features.mjs';
 import { indexDecisions, loadDecisions } from './decisions.mjs';
 
 export function loadScope(project) {
@@ -9,10 +10,18 @@ export function loadScope(project) {
 }
 
 /** Locks edits to one feature's files. The feature's own globs plus any extra --files. */
-export function startScope(project, featureId, extra) {
-  const f = getFeature(loadFeatures(project), featureId);
+export function startScope(project, featureId, extra, { take = false } = {}) {
+  const features = loadFeatures(project);
+  const f = getFeature(features, featureId);
   const files = [...new Set([...(f.files ?? []), ...list(extra)])];
   if (!files.length) fail(`Feature ${featureId} names no files.`, 'Pass --files with the globs this work may touch, or set them on the feature.');
+  // The holder is committed with the feature, so teammates see who works on it before they start.
+  const me = holderName(project);
+  if (f.holder && f.holder.by !== me && !take) {
+    fail(`${featureId} is held by ${f.holder.by} since ${f.holder.since}.`, 'Agree with them first; then `keel scope start ' + featureId + ' --take` records that you took it over.');
+  }
+  f.holder = { by: me, since: today() };
+  saveFeatures(project, features);
   const scope = { feature: featureId, files, widened: [], deps: [], started: today() };
   writeJSON(project.paths.scope, scope);
   return scope;
@@ -38,6 +47,14 @@ export function allowDeps(project, decisionId) {
 }
 
 export function clearScope(project) {
+  const scope = loadScope(project);
+  if (scope?.feature) {
+    const features = loadFeatures(project);
+    if (features[scope.feature]?.holder?.by === holderName(project)) {
+      delete features[scope.feature].holder;
+      saveFeatures(project, features);
+    }
+  }
   if (fs.existsSync(project.paths.scope)) fs.rmSync(project.paths.scope);
   return { cleared: true };
 }

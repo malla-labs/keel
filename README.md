@@ -17,6 +17,7 @@ The rules live in a small command-line tool and in hooks, not only in instructio
 | **Proven, not claimed** | "Built" is refused until every check has a test, a verification is recorded and still current, and the code cites its decisions. A stop gate keeps Claude working while `keel check` fails |
 | **Fresh-eyes review** | Reviewers that never saw the reasoning look for bugs and broken rules; a separate verifier confirms each finding. Findings are numbered records (`R-n`), and an open important one blocks "built" |
 | **Progress you can trust** | Per feature, per scope and per week, computed from the files: tests, verifications, history |
+| **Teams** | Owners are known by their git identity, so a teammate's session cannot accept product rules. keel's records merge as data across branches (colliding numbers are renumbered), each feature shows who holds it, and `keel ci github` runs the same checks on every pull request |
 | **Git hooks** | The same checks for people and other tools: pre-commit, commit-msg (adds the feature), pre-push |
 
 ## Install
@@ -67,7 +68,7 @@ Scope: booking.cancel since 2026-11-25 · 2 files changed in scope · widened 0�
 
 ## How it is tested
 
-- **Unit tests** (`npm test`): 68 tests, one per guarantee the CLI makes.
+- **Unit tests** (`npm test`): 73 tests, one per guarantee the CLI makes.
 - **Scenario evals** (`node evals/run.mjs`): 14 scenarios run as real headless Claude Code sessions and graded with code (files, git and `keel check`), not by a model. Each scenario passes 3 runs out of 3: recording a rule, a conflicting rule, asking and answering questions, building a feature, widening a scope, adding a dependency, reviewing planted bugs, adopting a project, committing through the git hooks, registering a new project from a brief, fixing a bug, a flaky test, and a request that conflicts with an accepted rule.
 
 ```bash

@@ -1,3 +1,4 @@
+import { requireOwner } from './team.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fail, readJSON, today, writeJSON, writeText } from './util.mjs';
@@ -89,7 +90,7 @@ export function answerQuestion(project, idArg, opts) {
   const q = store.open[i];
   const by = String(opts.by ?? '').trim();
   if (!by) fail('--by is required: who answered.');
-  if (q.kind === 'product' && !cfg.owners.includes(by)) fail(`Q-${id} is a product question: only an owner (${cfg.owners.join(', ')}) answers it.`);
+  if (q.kind === 'product') requireOwner(project, by, `answers product question Q-${id}`);
   let answer = String(opts.answer ?? '').trim();
   if (!answer) fail('--answer is required.');
   const opt = q.options.find((o) => o.key === answer.toUpperCase());

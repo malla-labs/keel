@@ -1,6 +1,6 @@
 {
   "name": "keel",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Decisions, owner questions, scoped features, targeted tests, verification gates and fresh-context review for any project.",
   "author": {
     "name": "Malla Labs",

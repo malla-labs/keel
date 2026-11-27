@@ -62,7 +62,7 @@ Options take a value as the next argument or with `=` (`--area=S`). A repeated o
 
 ### `keel version` (or `--version`, `-v`)
 
-Prints the installed keel version. The session brief's first line shows it too (`keel 0.9.0 · <project> · …`).
+Prints the installed keel version. The session brief's first line shows it too (`keel 0.10.0 · <project> · …`).
 
 ### `keel rules [rules|questions|briefing]`
 
@@ -156,6 +156,18 @@ With at least one module, `keel check`:
 
 Package imports and path aliases are not checked yet. The brief names the modules, or says none are defined.
 
+### Teams
+
+| Need | How keel does it |
+|---|---|
+| Only the owner decides product rules | `owners` entries may carry an email: `"Ana Ruiz <ana@x.io>"`. Then the session's git identity (`git var GIT_AUTHOR_IDENT`) decides who is an owner; `sessionOwner` is ignored. `decision new --status accepted`, `decision accept` and `question answer` on a product item are refused unless `--by` is an owner **and** the git identity is that owner |
+| Two branches add records at once | `keel githooks install` writes a `.gitattributes` block and a `merge.keel` driver: questions, features, reviews and architecture merge as data; a number taken on both branches is renumbered on the merged branch's side and printed. `history.jsonl` merges as a union of lines; generated files (`STATE.md`, `OPEN_QUESTIONS.md`, `ARCHITECTURE.md`) keep ours and the `post-merge` hook rewrites them |
+| Two branches write the same decision number | `keel check` fails (`id P-012 is also used by …`) and the post-merge hook says so. `keel decision renumber <record file> --refs "<globs>"` moves one record to the next number and rewrites the old id in the files named |
+| Who works on what | `keel scope start` records the holder (git identity) on the feature, in `features.json`, so it is committed and seen by everyone; another person's start is refused unless they pass `--take`; `scope clear` releases it. The brief lists features held by others |
+| Rules for people and tools without keel | `keel ci github` writes `.github/workflows/keel.yml`: `keel check --strict`, and `keel verify` when `verify.quick` is set, on every pull request and push to main, pinned to the keel version |
+
+The merge driver lives in `.git/config`, which git does not share: every clone runs `keel githooks install` once (`keel githooks status` shows `merge-driver`).
+
 ### Feature risk
 
 `keel feature add|set <id> --risk low|normal|high` (default `normal`). `/keel:review` reviews `low` with the correctness lens; `normal` with correctness, rules and quality; `high` adds security and regressions and two verifiers. `/keel:feature` adds abuse-case checks (limits, authorization, cross-site requests, malformed input, sign-out) to a `high` feature.
@@ -186,7 +198,7 @@ An open `important` finding blocks `feature set <id> --status built`. `keel prog
 
 ### History log
 
-`.keel/history.jsonl`, one JSON event per line, written by the CLI only: `decision.new`, `decision.accept`, `question.add`, `question.answer`, `question.withdraw`, `feature.add`, `feature.check`, `feature.status` (with `from` and `to`), `feature.verified` (with `evidence`, or `stale: true`), `feature.link`, `review.finding`, `review.resolve`, `module.add`, `module.set`, `summary.set`, `adopt.done`, `githooks.install`, `scope.start`, `scope.widen` (with the reason), `scope.deps`, `scope.clear`. Each has `at` (ISO time) and the ids involved.
+`.keel/history.jsonl`, one JSON event per line, written by the CLI only: `decision.new`, `decision.accept`, `question.add`, `question.answer`, `question.withdraw`, `feature.add`, `feature.check`, `feature.status` (with `from` and `to`), `feature.verified` (with `evidence`, or `stale: true`), `feature.link`, `review.finding`, `review.resolve`, `module.add`, `module.set`, `decision.renumber`, `summary.set`, `adopt.done`, `githooks.install`, `scope.start`, `scope.widen` (with the reason), `scope.deps`, `scope.clear`. Each has `at` (ISO time) and the ids involved.
 
 ### `keel scope …`
 

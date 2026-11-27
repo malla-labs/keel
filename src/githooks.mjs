@@ -5,7 +5,7 @@ import { fail } from './util.mjs';
 
 const BEGIN = '# keel:begin (managed by `keel githooks`; do not edit inside)';
 const END = '# keel:end';
-export const HOOKS = ['pre-commit', 'commit-msg', 'pre-push'];
+export const HOOKS = ['pre-commit', 'commit-msg', 'pre-push', 'post-merge'];
 
 function git(root, args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -32,6 +32,7 @@ if [ -z "$KEEL" ]; then echo "keel: not installed, ${hook} checks skipped" >&2; 
     'pre-commit': `  $KEEL hook git pre-commit || exit $?`,
     'commit-msg': `  $KEEL hook git commit-msg "$1" || exit $?`,
     'pre-push': `  $KEEL hook git pre-push || exit $?`,
+    'post-merge': `  $KEEL hook git post-merge`,
   }[hook];
   return `${BEGIN}\n${find}\n${run}\nfi\n${END}`;
 }
@@ -102,4 +103,61 @@ export function addFeatureTrailer(msgFile, feature) {
   const isTrailers = lastPara.split('\n').every((l) => /^[A-Za-z][\w-]*: /.test(l));
   fs.writeFileSync(msgFile, `${head}${isTrailers && head.includes('\n\n') ? '\n' : '\n\n'}Feature: ${feature}\n${tail}`);
   return true;
+}
+
+const ATTR_BEGIN = '# keel:begin (managed by `keel githooks`; do not edit inside)';
+const ATTR_END = '# keel:end';
+
+/**
+ * Merging keel's files: JSON stores through keel's driver (no conflict markers, colliding numbers
+ * renumbered), the history as a union of lines, generated files kept as ours and rewritten by the
+ * post-merge hook. .gitattributes is committed; the driver lives in .git/config, so every clone
+ * runs `keel githooks install` once.
+ */
+export function installMergeSupport(root, cli, generated) {
+  const top = git(root, ['rev-parse', '--show-toplevel']);
+  const rel = (p) => path.relative(top, path.join(root, p)).split(path.sep).join('/');
+  const lines = [
+    ATTR_BEGIN,
+    ...['questions.json', 'features.json', 'reviews.json', 'architecture.json'].map((f) => `${rel('.keel/' + f)} merge=keel`),
+    `${rel('.keel/history.jsonl')} merge=union`,
+    ...generated.map((g) => `${rel(g)} merge=keel-generated`),
+    ATTR_END,
+  ].join('\n');
+  const file = path.join(top, '.gitattributes');
+  let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  const a = text.indexOf(ATTR_BEGIN);
+  const b = text.indexOf(ATTR_END);
+  text = a !== -1 && b !== -1 ? text.slice(0, a) + lines + text.slice(b + ATTR_END.length) : `${text}${text && !text.endsWith('\n') ? '\n' : ''}${lines}\n`;
+  fs.writeFileSync(file, text);
+  const set = (k, v) => execFileSync('git', ['config', k, v], { cwd: root });
+  set('merge.keel.name', 'keel records (questions, features, reviews, architecture)');
+  set('merge.keel.driver', `node "${cli}" hook git merge-driver %P %O %A %B`);
+  set('merge.keel-generated.name', 'keel generated files (rewritten after the merge)');
+  set('merge.keel-generated.driver', 'true');
+  return { gitattributes: path.relative(root, file) || '.gitattributes' };
+}
+
+export function mergeSupportStatus(root) {
+  let driver = '';
+  try { driver = git(root, ['config', '--get', 'merge.keel.driver']); } catch {}
+  return driver ? 'installed' : 'missing';
+}
+
+/** Removes keel's .gitattributes block and its merge drivers from .git/config. */
+export function uninstallMergeSupport(root) {
+  const top = git(root, ['rev-parse', '--show-toplevel']);
+  const file = path.join(top, '.gitattributes');
+  if (fs.existsSync(file)) {
+    const text = fs.readFileSync(file, 'utf8');
+    const a = text.indexOf(ATTR_BEGIN);
+    const b = text.indexOf(ATTR_END);
+    if (a !== -1 && b !== -1) {
+      const rest = (text.slice(0, a) + text.slice(b + ATTR_END.length).replace(/^\n/, '')).trimEnd();
+      if (rest) fs.writeFileSync(file, rest + '\n'); else fs.rmSync(file);
+    }
+  }
+  for (const section of ['merge.keel', 'merge.keel-generated']) {
+    try { execFileSync('git', ['config', '--remove-section', section], { cwd: root, stdio: 'ignore' }); } catch {}
+  }
 }

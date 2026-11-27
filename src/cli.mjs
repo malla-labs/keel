@@ -2,21 +2,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { KeelError, fail } from './util.mjs';
 import { findRoot, loadProject } from './config.mjs';
-import { acceptDecision, loadDecisions, newDecision, nextId } from './decisions.mjs';
+import { acceptDecision, loadDecisions, newDecision, nextId, renumberRecord } from './decisions.mjs';
+import { writeCiWorkflow } from './ci.mjs';
 import { addQuestion, answerQuestion, withdrawQuestion, formatQuestion, loadQuestions, renderOpenQuestions } from './questions.mjs';
 import { addCheck, addFeature, builtProblems, getFeature, linkCheck, loadFeatures, setFeature } from './features.mjs';
 import { allowDeps, clearScope, judge, loadScope, startScope, widenScope } from './scope.mjs';
 import { baseline, check } from './check.mjs';
 import { brief, renderState, writeSummary } from './state.mjs';
 import { scan } from './scan.mjs';
-import { addFeatureTrailer, hooksStatus, installHooks, uninstallHooks } from './githooks.mjs';
+import { addFeatureTrailer, hooksStatus, installHooks, installMergeSupport, mergeSupportStatus, uninstallHooks, uninstallMergeSupport } from './githooks.mjs';
+import { runMergeDriver } from './team.mjs';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { init } from './init.mjs';
 import { coverage, fingerprint, formatProgress, logEvent, markVerified, progress } from './progress.mjs';
 import { addFinding, formatFinding, loadReviews, openFindings, resolveFinding } from './reviews.mjs';
 import { formatVerify, runVerify, verifyRecord } from './verify.mjs';
-import { formatModules, loadArchitecture, renderArchitecture, setModule } from './architecture.mjs';
+import { architecturePath, formatModules, loadArchitecture, renderArchitecture, setModule } from './architecture.mjs';
 
 const HELP = `keel: decisions, questions, features and guards for a project.
 
@@ -29,6 +31,7 @@ const HELP = `keel: decisions, questions, features and guards for a project.
                     [--consequences TEXT] [--alternatives TEXT] [--code TEXT] [--supersedes ID]
   keel decision accept <ID> --by WHO [--quote TEXT]
   keel decision list [--area A] [--status S]
+  keel decision renumber <RECORD FILE> [--refs GLOBS]   (after a merge: give a record that collides a new number)
   keel question add --kind product|engineering --question Q --blocks WHY
                     --option TEXT --option '*RECOMMENDED' [--option ...] --default TEXT
                     [--feature F] [--decision ID]          (or: --json '<object>')
@@ -52,11 +55,12 @@ const HELP = `keel: decisions, questions, features and guards for a project.
   keel module set <NAME> [--about TEXT] [--files GLOBS] [--uses MODULES] --decision ID
   keel module list                (modules, their files and what each may import; docs/ARCHITECTURE.md is generated)
   keel progress [FEATURE] [--json]           (feature, scope and development progress)
-  keel scope start <FEATURE> [--files GLOBS] | widen <GLOB> --reason WHY | deps <DECISION> | clear | show
+  keel scope start <FEATURE> [--files GLOBS] [--take] | widen <GLOB> --reason WHY | deps <DECISION> | clear | show
   keel check [--changed] [--strict] [--json]
   keel baseline                   (adopting keel: record today's errors so only new ones fail)
   keel scan                       (facts about the repository: languages, manifests, test scripts, layout, docs)
   keel summary set --file F | --text T   (the project summary every session reads; at most 40 lines)
+  keel ci github                  (write .github/workflows/keel.yml: keel check --strict and keel verify on every pull request)
   keel githooks install|uninstall|status   (git pre-commit, commit-msg, pre-push; never overwrites other hooks)
   keel adopted                    (mark the end of adopting a project: what existed is not counted as pace)
   keel render
@@ -114,7 +118,7 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
         json(init(process.cwd(), { name: one(opts.name, 'name'), mode: one(opts.mode, 'mode'), pattern: one(opts.pattern, 'pattern'), sessionOwner: Boolean(opts.sessionOwner), owners: opts.owner ? [].concat(opts.owner) : undefined }));
         return 0;
       case 'hook':
-        if (sub === 'git') return gitHook(rest[0], rest[1], io);
+        if (sub === 'git') return gitHook(rest[0], rest[1], io, rest.slice(2));
         return await hook(sub, io);
       case 'rules': {
         const names = { rules: 'rules.md', questions: 'question-pattern.md', briefing: 'briefing.md' };
@@ -134,6 +138,13 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
           logEvent(project, 'decision.new', { id: r.id, kind: r.kind, status: r.status, ...(r.superseded ? { supersedes: r.superseded } : {}) });
           renderState(project);
           json({ ...r, file: path.relative(project.root, r.file) });
+          return 0;
+        }
+        if (sub === 'renumber') {
+          const r = renumberRecord(project, rest[0], [].concat(opts.refs ?? []).flatMap((g) => String(g).split(',')).map((g) => g.trim()).filter(Boolean));
+          logEvent(project, 'decision.renumber', r);
+          renderState(project);
+          json(r);
           return 0;
         }
         if (sub === 'accept') { json(acceptDecision(project, rest[0], one(opts.by, 'by'), one(opts.quote, 'quote'))); logEvent(project, 'decision.accept', { id: rest[0] }); renderState(project); return 0; }
@@ -244,6 +255,11 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
         if (sub === 'list' || sub === undefined) { io.out(formatModules(loadArchitecture(project))); return 0; }
         break;
       }
+      case 'ci': {
+        if (sub !== 'github') fail('Use `keel ci github`.', 'Other CI systems: run `npx --yes github:malla-labs/keel check --strict` and `… verify` in a pull-request job.');
+        json(writeCiWorkflow(project, version()));
+        return 0;
+      }
       case 'verify': {
         const ran = runVerify(project, { full: Boolean(opts.full) });
         io.out(formatVerify(ran));
@@ -261,10 +277,10 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
         break;
       }
       case 'scope': {
-        if (sub === 'start') { const r = startScope(project, rest[0], one(opts.files, 'files')); logEvent(project, 'scope.start', { feature: r.feature }); json(r); return 0; }
+        if (sub === 'start') { const r = startScope(project, rest[0], one(opts.files, 'files'), { take: Boolean(opts.take) }); logEvent(project, 'scope.start', { feature: r.feature, ...(opts.take ? { took: true } : {}) }); renderState(project); json(r); return 0; }
         if (sub === 'widen') { const r = widenScope(project, rest[0], one(opts.reason, 'reason')); logEvent(project, 'scope.widen', { feature: r.feature, glob: rest[0], reason: one(opts.reason, 'reason') }); json(r); return 0; }
         if (sub === 'deps') { const r = allowDeps(project, rest[0]); logEvent(project, 'scope.deps', { decision: rest[0] }); json(r); return 0; }
-        if (sub === 'clear') { const had = loadScope(project); const r = clearScope(project); if (had) logEvent(project, 'scope.clear', { feature: had.feature }); json(r); return 0; }
+        if (sub === 'clear') { const had = loadScope(project); const r = clearScope(project); if (had) logEvent(project, 'scope.clear', { feature: had.feature }); renderState(project); json(r); return 0; }
         if (sub === 'show' || sub === undefined) { json(loadScope(project) ?? { active: false }); return 0; }
         break;
       }
@@ -297,9 +313,15 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
       }
       case 'githooks': {
         const cli = fileURLToPath(new URL('../bin/keel', import.meta.url));
-        if (sub === 'install') { const r = installHooks(project.root, cli); logEvent(project, 'githooks.install', {}); json(r); return 0; }
-        if (sub === 'uninstall') { json(uninstallHooks(project.root)); return 0; }
-        if (sub === 'status' || sub === undefined) { json(hooksStatus(project.root)); return 0; }
+        if (sub === 'install') {
+          const generated = [path.relative(project.root, project.paths.state), path.relative(project.root, project.paths.openQuestions), path.relative(project.root, architecturePath(project))];
+          const r = { ...installHooks(project.root, cli), merge: installMergeSupport(project.root, cli, generated) };
+          logEvent(project, 'githooks.install', {});
+          json(r);
+          return 0;
+        }
+        if (sub === 'uninstall') { const r = uninstallHooks(project.root); uninstallMergeSupport(project.root); json(r); return 0; }
+        if (sub === 'status' || sub === undefined) { json({ ...hooksStatus(project.root), 'merge-driver': mergeSupportStatus(project.root) }); return 0; }
         break;
       }
       case 'adopted':
@@ -406,11 +428,26 @@ async function hook(kind, io) {
  * pre-push: the full `check`, then `verify.quick`. `gate` decides: enforce blocks, observe prints, off skips.
  * Outside a keel project they do nothing.
  */
-function gitHook(kind, arg, io) {
+function gitHook(kind, arg, io, extra = []) {
+  if (kind === 'merge-driver') {
+    // git runs it from the top of the work tree: %P is the path, then %O %A %B. Writes the merge into %A.
+    const renumbered = runMergeDriver(arg, ...extra);
+    for (const r of renumbered) io.err(`keel merge: ${arg}: their ${String(r.from).includes('#') ? r.from : `#${r.from}`} became ${String(r.to).includes('#') ? r.to : `#${r.to}`} (the number was taken on this branch). Update any reference to it.`);
+    return 0;
+  }
   const root = findRoot(process.cwd());
   if (!root) return 0;
   const project = loadProject(root);
   const { cfg } = project;
+  if (kind === 'post-merge') {
+    // Generated files kept "ours" during the merge are rewritten from the merged records.
+    renderOpenQuestions(project);
+    renderState(project);
+    if (Object.keys(loadArchitecture(project).modules).length) renderArchitecture(project);
+    const dup = check(project).errors.filter((e) => /is also used by/.test(e.message));
+    for (const d of dup) io.err(`keel post-merge: ${d.where}: ${d.message}. Renumber the record that came from the merged branch: \`keel decision renumber <its file> --refs "<globs of files citing it>"\`.`);
+    return 0;
+  }
   if (kind === 'commit-msg') {
     const scope = loadScope(project);
     if (scope?.feature && addFeatureTrailer(arg, scope.feature)) io.err(`keel: added "Feature: ${scope.feature}" to the commit message.`);
