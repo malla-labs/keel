@@ -1,4 +1,4 @@
-import { holderName } from './team.mjs';
+import { holderName, isHolder } from './team.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fail, matchesAny, readJSON, today, writeJSON } from './util.mjs';
@@ -16,11 +16,10 @@ export function startScope(project, featureId, extra, { take = false } = {}) {
   const files = [...new Set([...(f.files ?? []), ...list(extra)])];
   if (!files.length) fail(`Feature ${featureId} names no files.`, 'Pass --files with the globs this work may touch, or set them on the feature.');
   // The holder is committed with the feature, so teammates see who works on it before they start.
-  const me = holderName(project);
-  if (f.holder && f.holder.by !== me && !take) {
+  if (f.holder && !isHolder(project, f.holder) && !take) {
     fail(`${featureId} is held by ${f.holder.by} since ${f.holder.since}.`, 'Agree with them first; then `keel scope start ' + featureId + ' --take` records that you took it over.');
   }
-  f.holder = { by: me, since: today() };
+  f.holder = { by: holderName(project) ?? 'someone without a git identity', since: today() };
   saveFeatures(project, features);
   const scope = { feature: featureId, files, widened: [], deps: [], started: today() };
   writeJSON(project.paths.scope, scope);
@@ -50,7 +49,7 @@ export function clearScope(project) {
   const scope = loadScope(project);
   if (scope?.feature) {
     const features = loadFeatures(project);
-    if (features[scope.feature]?.holder?.by === holderName(project)) {
+    if (isHolder(project, features[scope.feature]?.holder)) {
       delete features[scope.feature].holder;
       saveFeatures(project, features);
     }

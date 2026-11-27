@@ -109,3 +109,51 @@ test('ci github writes a pull-request workflow pinned to this keel version', asy
   assert.match(wf, /run: npx --yes github:malla-labs\/keel#v\d+\.\d+\.\d+ check --strict/);
   assert.doesNotMatch(wf, /verify/);
 });
+
+test('with any owner known by email, a name-only owner cannot be claimed by --by alone', async () => {
+  const dir = await project(['--owner', 'Ana <ana@x.io>', '--owner', 'Carl']);
+  const r = JSON.parse((await keel(dir, ['decision', 'new', '--area', 'D', '--title', 'Renters get half back late', '--kind', 'product', '--by', 'bob', '--decision', '50%.'])).out);
+  await as('bob@x.io', async () => {
+    assert.match((await keel(dir, ['decision', 'accept', r.id, '--by', 'Carl', '--quote', 'ok'])).err, /Carl has no email in \.keel\/project\.json owners/);
+  });
+});
+
+test('a product rule is superseded only by an accepted record from the owner', async () => {
+  const dir = await project(['--owner', 'Ana <ana@x.io>']);
+  await as('ana@x.io', () => keel(dir, ['decision', 'new', '--area', 'D', '--title', 'Renters get half back late', '--kind', 'product', '--by', 'Ana', '--status', 'accepted', '--quote', 'half', '--decision', '50%.']));
+  const sup = ['decision', 'new', '--area', 'D', '--title', 'Renters get nothing back late', '--kind', 'product', '--decision', '0%.', '--supersedes', 'D-001'];
+  await as('bob@x.io', async () => {
+    assert.match((await keel(dir, [...sup, '--by', 'bob'])).err, /superseded only by an accepted record/);
+    assert.match((await keel(dir, [...sup, '--by', 'Ana', '--status', 'accepted', '--quote', 'none'])).err, /git identity is bob@x\.io/);
+  });
+});
+
+test('merge: an item renumbered in an earlier merge is still the same item later; unreadable JSON stops the merge', async () => {
+  const { mergeStore, runMergeDriver } = await import('../src/team.mjs');
+  const q = (id, uid, text) => ({ id, uid, question: text });
+  // Earlier merge: their engineering question (uid e) became #2 on main. Now "other" answers it as its #1.
+  const base = { lastId: 1, open: [q(1, 'e', 'engineering')] };
+  const ours = { lastId: 2, open: [q(1, 'p', 'product'), q(2, 'e', 'engineering')] };
+  const theirs = { lastId: 1, open: [], closed: [{ id: 1, uid: 'e', answered: '2026-11-25' }] };
+  const { merged } = mergeStore('questions', base, ours, theirs);
+  assert.deepEqual(merged.open.map((x) => [x.id, x.uid]), [[1, 'p']]);
+
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'keel-merge-'));
+  for (const [n, text] of [['o', '{"lastId":1,"open":[]}'], ['a', '{"lastId":1,"open":[]}'], ['b', '{"lastId": 2, <<<<<<< broken']]) fs.writeFileSync(path.join(dir, n), text);
+  assert.throws(() => runMergeDriver('.keel/questions.json', path.join(dir, 'o'), path.join(dir, 'a'), path.join(dir, 'b')), /not valid JSON/);
+});
+
+test('merge: a feature both sides changed keeps each side\'s field changes and their test links', async () => {
+  const { mergeStore } = await import('../src/team.mjs');
+  const base = { 'a.b': { title: 'T', status: 'building', decisions: [], checks: { 1: 'one' }, lastCheck: 1, files: [] } };
+  const ours = { 'a.b': { ...base['a.b'], holder: { by: 'ana', since: 'x' } } };
+  const theirs = { 'a.b': { ...base['a.b'], status: 'built', risk: 'high', checks: { 1: 'one', 2: 'two' }, lastCheck: 2, links: { 2: 't.test.js::two' } } };
+  const f = mergeStore('features', base, ours, theirs).merged['a.b'];
+  assert.equal(f.status, 'built');
+  assert.equal(f.risk, 'high');
+  assert.deepEqual(f.holder, { by: 'ana', since: 'x' });
+  assert.deepEqual(f.links, { 2: 't.test.js::two' });
+  assert.deepEqual(f.checks, { 1: 'one', 2: 'two' });
+});

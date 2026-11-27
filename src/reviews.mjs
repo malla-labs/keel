@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fail, readJSON, today, writeJSON } from './util.mjs';
 import { getFeature, loadFeatures } from './features.mjs';
 
@@ -44,6 +45,7 @@ export function addFinding(project, opts) {
   store.lastId = id;
   const finding = {
     id,
+    uid: randomUUID().slice(0, 8),
     feature,
     severity,
     verdict,

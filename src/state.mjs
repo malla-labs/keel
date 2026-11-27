@@ -1,5 +1,5 @@
 import { loadArchitecture } from './architecture.mjs';
-import { holderName, ownerNames, sessionOwner } from './team.mjs';
+import { isHolder, ownerNames, sessionOwner } from './team.mjs';
 import fs from 'node:fs';
 import { fail, writeText } from './util.mjs';
 
@@ -146,8 +146,7 @@ function ownerLine(project) {
 
 /** Features other people hold right now, so a session does not start on someone else's work. */
 function heldLine(project, features) {
-  const me = holderName(project);
-  const held = Object.entries(features).filter(([, f]) => f.holder && f.holder.by !== me);
+  const held = Object.entries(features).filter(([, f]) => f.holder && !isHolder(project, f.holder));
   if (!held.length) return [];
   return [`Held by others: ${held.map(([id, f]) => `${id} (${f.holder.by.replace(/ <.*>$/, '')}, since ${f.holder.since})`).join('; ')}. Do not start on these without agreeing first.`];
 }

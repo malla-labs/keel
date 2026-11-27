@@ -68,7 +68,7 @@ Scope: booking.cancel since 2026-11-25 · 2 files changed in scope · widened 0�
 
 ## How it is tested
 
-- **Unit tests** (`npm test`): 73 tests, one per guarantee the CLI makes.
+- **Unit tests** (`npm test`): 77 tests, one per guarantee the CLI makes.
 - **Scenario evals** (`node evals/run.mjs`): 14 scenarios run as real headless Claude Code sessions and graded with code (files, git and `keel check`), not by a model. Each scenario passes 3 runs out of 3: recording a rule, a conflicting rule, asking and answering questions, building a feature, widening a scope, adding a dependency, reviewing planted bugs, adopting a project, committing through the git hooks, registering a new project from a brief, fixing a bug, a flaky test, and a request that conflicts with an accepted rule.
 
 ```bash

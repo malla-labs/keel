@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { requireOwner } from './team.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -71,7 +72,7 @@ export function addQuestion(project, input) {
   if (dup) fail(`The same question is already open as Q-${dup.id}.`);
   const id = store.lastId + 1;
   store.lastId = id;
-  store.open.push({ id, ...q, asked: today() });
+  store.open.push({ id, uid: randomUUID().slice(0, 8), ...q, asked: today() });
   writeJSON(project.paths.questions, store);
   renderOpenQuestions(project);
   return { id, kind: q.kind };
@@ -108,7 +109,7 @@ export function answerQuestion(project, idArg, opts) {
     saveFeatures(project, features);
   }
   store.open.splice(i, 1);
-  store.closed = [...(store.closed ?? []), { id, answered: date, by, ...(opts.decision ? { decision: opts.decision } : {}) }];
+  store.closed = [...(store.closed ?? []), { id, ...(q.uid ? { uid: q.uid } : {}), answered: date, by, ...(opts.decision ? { decision: opts.decision } : {}) }];
   writeJSON(project.paths.questions, store);
   renderOpenQuestions(project);
   return { id, answer, filed: path.relative(project.root, resolutionFile(project, date)) };
@@ -127,7 +128,7 @@ export function withdrawQuestion(project, idArg, opts) {
   const q = store.open[i];
   appendResolution(project, today(), `| Q-${id} | ${cell(q.question)} | Withdrawn: ${cell(reason)} | ${by} | — |`);
   store.open.splice(i, 1);
-  store.closed = [...(store.closed ?? []), { id, withdrawn: today(), by }];
+  store.closed = [...(store.closed ?? []), { id, ...(q.uid ? { uid: q.uid } : {}), withdrawn: today(), by }];
   writeJSON(project.paths.questions, store);
   renderOpenQuestions(project);
   return { id, withdrawn: true };

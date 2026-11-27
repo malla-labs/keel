@@ -132,6 +132,11 @@ export function newDecision(project, opts) {
     old = byId.get(opts.supersedes);
     if (!old) fail(`Cannot supersede ${opts.supersedes}: no such record.`);
     if (old.status === 'superseded') fail(`${old.id} is already superseded by ${old.supersededBy}. Supersede ${old.supersededBy} instead.`);
+    // Retiring a product rule is a product decision: only the owner, with an accepted replacement.
+    if (old.kind === 'product') {
+      if (status !== 'accepted') fail(`${old.id} is a product rule: it is superseded only by an accepted record.`, 'Write the new rule --status proposed without --supersedes, and ask the owner; the owner supersedes it.');
+      requireOwner(project, by, `supersedes product rule ${old.id}`);
+    }
   }
   const id = nextId(project, letter);
   const slug = slugify(title);
@@ -203,7 +208,9 @@ export function renumberRecord(project, recordFile, refs) {
   const re = new RegExp(`\\b${rec.id}\\b`, 'g');
   const changed = [];
   if (refs?.length) {
-    for (const rel of walk(project.root, project.cfg.ignore).filter((f) => matchesAny(f, refs))) {
+    // Record files are left alone: the one that kept the number must keep its title.
+    const records = path.relative(project.root, project.paths.decisions).split(path.sep).join('/') + '/';
+    for (const rel of walk(project.root, project.cfg.ignore).filter((f) => matchesAny(f, refs) && !f.startsWith(records))) {
       const f = path.join(project.root, rel);
       const before = fs.readFileSync(f, 'utf8');
       const after = before.replace(re, id);
