@@ -139,7 +139,7 @@ Installs `pre-commit` (`keel hook git pre-commit`: `check --changed`), `commit-m
 
 Records that the feature's verification passed: the command, the time, a fingerprint of the contents of the files matching the feature's globs, and any `--evidence` given (what the command alone does not show: a screenshot path, a flow driven in the app). Refused while any check has no test or `keel check` has errors. When the fingerprint no longer matches, the feature shows as `stale`.
 
-`keel feature verified --stale --command CMD` records the verification again for every feature that is stale, after one passing run of the full test command. Use it when a shared file (a server entry point, a config) made several features stale at once.
+`keel feature verified --stale --command CMD` records the verification again for every feature that is stale, after one passing run of the full test command. It prints `verified` and `failed` (each with its problem) and exits 1 when any failed. Use it when a shared file (a server entry point, a config) made several features stale at once.
 
 ### `keel review add|resolve|list`
 
@@ -281,7 +281,7 @@ Status values: `proposed (<who>, <date>)`, `accepted (<who>, <date>)`, `supersed
 | Questions | Missing parts of the pattern; wrong option keys; not exactly one recommended; unknown feature or decision; number above `lastId`; duplicate numbers; `OPEN_QUESTIONS.md` out of date | |
 | Features | Bad id or status; no title; a cited decision that does not exist | |
 | State | — (the generated block is refreshed in place, so progress stays current) | |
-| Code | `Decision: <ID>` that does not exist, or a proposed product rule (every id in a `Decision: A, B` list counts); a `Q-n` above `lastId` | Cites a superseded rule; names a `Q-n` that is answered or withdrawn (cite its decision instead) |
+| Code | `Decision: <ID>` that does not exist, or a proposed product rule (every id in a `Decision: A, B` list counts) | Cites a superseded rule; a comment names a `Q-n` that is answered, withdrawn or never asked (only comments are read, so `"Q-7"` in a string is ignored) |
 | Tests | A case that cites nothing (by `tests.require`); `Covers:` naming a missing feature, check or decision | A check of a `building`/`built` feature with no test, or more than one |
 
 ---

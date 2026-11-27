@@ -129,8 +129,13 @@ export function citedDecisions(text) {
 
 // `Q-3`, as written in code comments that point at an open question.
 const QUESTION_REF_RE = /\bQ-(\d+)\b/g;
+// Where a comment starts on a line: //, #, /*, a leading *, --, <!--. Only the text after it is read,
+// so a string such as "Q-7" (a part number, a quarter) is never taken for a question.
+const COMMENT_START_RE = /\/\/|\/\*|<!--|(?:^|\s)#|(?:^|\s)--\s|^\s*\*/;
 
-/** The question numbers a text names. */
-export function citedQuestions(text) {
-  return [...String(text).matchAll(QUESTION_REF_RE)].map((m) => Number(m[1]));
+/** The question numbers a line's comment names. Code outside the comment is ignored. */
+export function citedQuestions(line) {
+  const m = COMMENT_START_RE.exec(String(line));
+  if (!m) return [];
+  return [...String(line).slice(m.index).matchAll(QUESTION_REF_RE)].map((x) => Number(x[1]));
 }

@@ -115,9 +115,9 @@ export function check(project, { changed = false, strict = false } = {}) {
 
   function questionRefProblem(n, where) {
     if (openIds.has(n)) return;
-    if (n > store.lastId) return err(where, `names Q-${n}, which does not exist`);
+    if (n > store.lastId) return warn(where, `names Q-${n}, which was never asked`);
     const c = closedBy.get(n);
-    const settled = c?.decision ? `; cite ${c.decision} instead` : c?.withdrawn ? ' (withdrawn); remove the reference' : '; cite the decision that settled it instead';
+    const settled = c?.decision ? `; cite ${c.decision} instead` : c?.withdrawn ? ' (withdrawn); remove the reference' : '; cite the decision that settled it, or remove the reference';
     warn(where, `names Q-${n}, which is no longer open${settled}`);
   }
 

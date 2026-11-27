@@ -197,8 +197,13 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
           if (id) fail('--stale verifies every stale feature; do not name one.');
           const result = check(project);
           const stale = Object.entries(loadFeatures(project)).filter(([, f]) => f.verified && fingerprint(project, f) !== f.verified.fingerprint).map(([fid]) => fid);
-          r = { verified: stale.map((fid) => markVerified(project, fid, o.command, result, evidence).id) };
-          for (const fid of r.verified) logEvent(project, 'feature.verified', { feature: fid, command: o.command, stale: true });
+          // Each feature is judged on its own, so one with a missing test does not hide which others were recorded.
+          r = { verified: [], failed: [] };
+          for (const fid of stale) {
+            try { markVerified(project, fid, o.command, result, evidence); r.verified.push(fid); logEvent(project, 'feature.verified', { feature: fid, command: o.command, stale: true }); }
+            catch (e) { if (!(e instanceof KeelError)) throw e; r.failed.push({ feature: fid, problem: e.message }); }
+          }
+          if (r.failed.length) { renderState(project); json(r); return 1; }
         } else if (sub === 'verified') {
           r = markVerified(project, id, o.command, check(project), evidence);
           logEvent(project, 'feature.verified', { feature: id, command: r.verified.command, ...(evidence.length ? { evidence } : {}) });

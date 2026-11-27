@@ -41,8 +41,11 @@ test('code naming a question warns once it is answered, and fails when the quest
   assert.match(r.out, /src\/refund\.ts:1: names Q-1, which is no longer open; cite D-001 instead/);
   assert.equal((await keel(dir, ['check', '--strict'])).code, 1);
 
-  write(dir, 'src/refund.ts', '// See Q-9.\n');
-  assert.match((await keel(dir, ['check'])).out, /names Q-9, which does not exist/);
+  write(dir, 'src/refund.ts', '// See Q-9.\nexport const tier = "Q-7"; const x = 1; // plain code\n');
+  r = await keel(dir, ['check']);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /src\/refund\.ts:1: names Q-9, which was never asked/);
+  assert.doesNotMatch(r.out, /Q-7/);
 });
 
 test('verified --stale verifies again only the features whose files changed', async () => {
@@ -53,8 +56,16 @@ test('verified --stale verifies again only the features whose files changed', as
   const r = await keel(dir, ['feature', 'verified', '--stale', '--command', 'npm test']);
   assert.equal(r.code, 0, r.err);
   assert.deepEqual(JSON.parse(r.out).verified, ['payment.refund']);
-  const p = JSON.parse((await keel(dir, ['progress', '--json'])).out);
-  assert.deepEqual(p.features.map((f) => f.verified), ['yes', 'yes']);
+
+  await keel(dir, ['feature', 'check', 'booking.cancel', '--add', 'A second promise without a test yet']);
+  write(dir, 'src/bookings/a.ts', 'export const a = 3;\n');
+  write(dir, 'src/payments/a.ts', 'export const a = 3;\n');
+  const partial = await keel(dir, ['feature', 'verified', '--stale', '--command', 'npm test']);
+  assert.equal(partial.code, 1);
+  const out = JSON.parse(partial.out);
+  assert.deepEqual(out.verified, ['payment.refund']);
+  assert.equal(out.failed[0].feature, 'booking.cancel');
+  assert.match(out.failed[0].problem, /checks without a test: #2/);
 });
 
 test('a verification keeps the evidence given with it', async () => {
