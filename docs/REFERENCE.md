@@ -25,7 +25,7 @@ Everything keel does, by part. For how to use it day to day, read [GUIDE.md](GUI
 | `/keel:answer <Q> <answer>` | The owner answers | Writes the decision if the answer is a rule, files the answer, adds work to the feature |
 | `/keel:state [feature]` | "Where are we?", "how far along?", "what's next?" | `keel progress` output, what blocks each feature in progress, open work |
 | `/keel:feature <id> [what]` | Building or changing a feature | Register, checks, decisions, scope, one test per check, verify, review, close |
-| `/keel:verify [quick\|full]` | Before saying "done", a commit or a PR | `keel check --changed`, the verify commands, the app; a fix loop of at most three rounds; records `feature verified`; evidence |
+| `/keel:verify [quick\|full]` | Before saying "done", a commit or a PR | `keel check --changed`, `keel verify` (tests, lint, types), the app; a fix loop of at most three rounds; records `feature verified --run` with evidence keel produced |
 | `/keel:review [quick\|deep] [base]` | Before a commit or PR | Fresh-context reviewers, a separate verifier, only confirmed findings |
 
 Every skill that changes state ends with `keel check` and quotes its last line.
@@ -36,7 +36,7 @@ Every skill that changes state ends with `keel check` and quotes its last line.
 
 | Agent | Tools | Model | Role |
 |---|---|---|---|
-| `keel:reviewer` | Read, Grep, Glob, Bash (read-only git and keel) | Sonnet | Reviews a diff through one lens: correctness, rules or regressions. Returns `path:line \| severity \| defect \| scenario \| fix`, at most 15 lines |
+| `keel:reviewer` | Read, Grep, Glob, Bash (read-only git and keel) | Sonnet | Reviews a diff through one lens: correctness, rules, quality, security or regressions. `/keel:review` picks the lenses by the feature's `risk`. Returns `path:line \| severity \| defect \| scenario \| fix`, at most 15 lines |
 | `keel:verifier` | Read, Grep, Glob, Bash (read-only git and keel) | Sonnet | Tries to prove each finding wrong. Returns `CONFIRMED` or `REJECTED` per finding, with a reason at `path:line` |
 
 ---
@@ -62,7 +62,7 @@ Options take a value as the next argument or with `=` (`--area=S`). A repeated o
 
 ### `keel version` (or `--version`, `-v`)
 
-Prints the installed keel version. The session brief's first line shows it too (`keel 0.7.0 · <project> · …`).
+Prints the installed keel version. The session brief's first line shows it too (`keel 0.8.0 · <project> · …`).
 
 ### `keel rules [rules|questions|briefing]`
 
@@ -140,6 +140,14 @@ Installs `pre-commit` (`keel hook git pre-commit`: `check --changed`), `commit-m
 Records that the feature's verification passed: the command, the time, a fingerprint of the contents of the files matching the feature's globs, and any `--evidence` given (what the command alone does not show: a screenshot path, a flow driven in the app). Refused while any check has no test or `keel check` has errors. When the fingerprint no longer matches, the feature shows as `stale`.
 
 `keel feature verified --stale --command CMD` records the verification again for every feature that is stale, after one passing run of the full test command. It prints `verified` and `failed` (each with its problem) and exits 1 when any failed. Use it when a shared file (a server entry point, a config) made several features stale at once.
+
+### `keel verify [--full]`
+
+Runs `verify.quick` (or `verify.full`), then `verify.lint` and `verify.types` when set, in the project root, and stops at the first failure. Prints `PASS`/`FAIL` per step with its last three output lines; exits 1 on a failure. `keel feature verified <id> --run [--full]` does the same and, when every step passed, records the verification itself: the commands joined with `&&` and each step's last line as evidence. `--stale --run` does it for every stale feature.
+
+### Feature risk
+
+`keel feature add|set <id> --risk low|normal|high` (default `normal`). `/keel:review` reviews `low` with the correctness lens; `normal` with correctness, rules and quality; `high` adds security and regressions and two verifiers. `/keel:feature` adds abuse-case checks (limits, authorization, cross-site requests, malformed input, sign-out) to a `high` feature.
 
 ### `keel review add|resolve|list`
 
@@ -219,7 +227,8 @@ Only people edit `.keel/project.json`; the guard blocks Claude. Missing keys tak
 | `alwaysInScope` | `docs/**`, `.keel/**` | Always editable during a scope |
 | `gate` | `enforce` | `enforce`, `observe` (log to `.keel/gate.log`) or `off` |
 | `gateMaxBlocks` | `2` | Stop-gate blocks per session before it lets Claude stop and report |
-| `verify.quick`, `verify.full`, `verify.app` | `null` | Commands the verify skill runs |
+| `verify.quick`, `verify.full`, `verify.app` | `null` | The test commands (`keel verify`, the pre-push hook) and how to start the app |
+| `verify.lint`, `verify.types` | `null` | The quality gate: `keel verify` runs them after the tests and fails on the first failure |
 | `pattern`, `stacks` | `null`, `[]` | Recorded for pattern packs; not used yet |
 
 Globs support `**`, `*`, `?` and `{a,b}`.

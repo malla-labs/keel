@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { init } from './init.mjs';
 import { coverage, fingerprint, formatProgress, logEvent, markVerified, progress } from './progress.mjs';
 import { addFinding, formatFinding, loadReviews, openFindings, resolveFinding } from './reviews.mjs';
+import { formatVerify, runVerify, verifyRecord } from './verify.mjs';
 
 const HELP = `keel: decisions, questions, features and guards for a project.
 
@@ -33,12 +34,14 @@ const HELP = `keel: decisions, questions, features and guards for a project.
   keel question answer <Q> --answer A|TEXT --by WHO [--quote TEXT] [--decision ID] [--work TEXT]
   keel question withdraw <Q> --reason WHY --by WHO   (replaced by better questions, or no longer needed)
   keel question list [--kind K]
-  keel feature add <ID> --title T [--status S] [--files GLOBS]
+  keel feature add <ID> --title T [--status S] [--files GLOBS] [--risk low|normal|high]
   keel feature check <ID> --add TEXT [--test 'FILE::TEST NAME']   (--test links an existing test, no edit needed)
   keel feature check <ID> --link N --test 'FILE::TEST NAME'
-  keel feature set <ID> [--status S] [--files GLOBS --reason WHY] [--decision IDS] [--remove-check N] [--done-work N]
+  keel feature set <ID> [--status S] [--risk R] [--files GLOBS --reason WHY] [--decision IDS] [--remove-check N] [--done-work N]
   keel feature verified <ID> --command CMD [--evidence TEXT ...]   (record a passing verification; needs a test per check and a clean check)
-  keel feature verified --stale --command CMD   (verify again every feature whose files changed after its verification)
+  keel feature verified <ID> --run [--full]   (keel runs verify.quick|full, lint, types itself and records the result)
+  keel feature verified --stale --command CMD | --run   (verify again every feature whose files changed after its verification)
+  keel verify [--full]            (run verify.quick|full, verify.lint and verify.types; exit 1 on the first failure)
   keel feature list | show <ID>
   keel review add --feature F --severity important|nit|pre-existing --verdict confirmed|rejected --summary TEXT
                   [--where PATH:LINE] [--reason WHY]   (a finding from /keel:review, with the verifier's verdict)
@@ -182,8 +185,17 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
         const id = rest[0];
         const evidence = [].concat(opts.evidence ?? []).filter((v) => v !== true).map((v) => String(v).trim()).filter(Boolean);
         const o = Object.fromEntries(Object.entries(opts).filter(([k]) => k !== 'evidence').map(([k, v]) => [k, one(v, k)]));
+        if (sub === 'verified' && opts.run) {
+          // keel runs the commands itself, so the record is evidence keel produced, not a claim.
+          const ran = runVerify(project, { full: Boolean(opts.full) });
+          io.err(formatVerify(ran));
+          if (!ran.ok) fail('Verification failed; nothing recorded.');
+          const rec = verifyRecord(ran);
+          o.command = rec.command;
+          evidence.push(...rec.evidence);
+        }
         let r;
-        if (sub === 'add') { r = addFeature(project, id, o); logEvent(project, 'feature.add', { feature: id, status: r.status }); }
+        if (sub === 'add') { r = addFeature(project, id, o); logEvent(project, 'feature.add', { feature: id, status: r.status, risk: o.risk ?? 'normal' }); }
         else if (sub === 'check') {
           if (o.link) { r = linkCheck(project, id, o.link, o.test); logEvent(project, 'feature.link', { feature: id, ref: r.ref, test: o.test }); }
           else { r = addCheck(project, id, o.add, o.test); logEvent(project, 'feature.check', { feature: id, ref: r.ref, ...(o.test ? { test: o.test } : {}) }); }
@@ -200,13 +212,13 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
           // Each feature is judged on its own, so one with a missing test does not hide which others were recorded.
           r = { verified: [], failed: [] };
           for (const fid of stale) {
-            try { markVerified(project, fid, o.command, result, evidence); r.verified.push(fid); logEvent(project, 'feature.verified', { feature: fid, command: o.command, stale: true }); }
+            try { markVerified(project, fid, o.command, result, evidence); r.verified.push(fid); logEvent(project, 'feature.verified', { feature: fid, command: o.command, stale: true, ...(opts.run ? { ran: true } : {}) }); }
             catch (e) { if (!(e instanceof KeelError)) throw e; r.failed.push({ feature: fid, problem: e.message }); }
           }
           if (r.failed.length) { renderState(project); json(r); return 1; }
         } else if (sub === 'verified') {
           r = markVerified(project, id, o.command, check(project), evidence);
-          logEvent(project, 'feature.verified', { feature: id, command: r.verified.command, ...(evidence.length ? { evidence } : {}) });
+          logEvent(project, 'feature.verified', { feature: id, command: r.verified.command, ...(opts.run ? { ran: true } : {}), ...(evidence.length ? { evidence } : {}) });
         }
         else if (sub === 'show') { json({ id, ...getFeature(loadFeatures(project), id) }); return 0; }
         else if (sub === 'list') {
@@ -216,6 +228,11 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
         renderState(project);
         json(r);
         return 0;
+      }
+      case 'verify': {
+        const ran = runVerify(project, { full: Boolean(opts.full) });
+        io.out(formatVerify(ran));
+        return ran.ok ? 0 : 1;
       }
       case 'review': {
         const o = Object.fromEntries(Object.entries(opts).map(([k, v]) => [k, one(v, k)]));

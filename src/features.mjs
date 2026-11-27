@@ -3,6 +3,8 @@ import path from 'node:path';
 import { citedDecisions, fail, matchesAny as matchesGlobs, readJSON, today, walk as walkFiles, writeJSON } from './util.mjs';
 
 export const STATUSES = ['planned', 'building', 'built', 'mocked', 'dropped'];
+// How much review a feature's changes get: low (correctness), normal (+ rules, quality), high (+ security, regressions).
+export const RISKS = ['low', 'normal', 'high'];
 const ID_RE = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/;
 
 export function loadFeatures(project) {
@@ -28,7 +30,9 @@ export function addFeature(project, id, opts) {
   if (!title) fail('--title is required.');
   const status = opts.status ?? 'planned';
   if (!STATUSES.includes(status)) fail(`--status must be one of ${STATUSES.join(', ')}.`);
-  features[id] = { title, status, decisions: [], checks: {}, lastCheck: 0, files: list(opts.files), work: [], added: today() };
+  const risk = opts.risk ?? 'normal';
+  if (!RISKS.includes(risk)) fail(`--risk must be one of ${RISKS.join(', ')}.`);
+  features[id] = { title, status, risk, decisions: [], checks: {}, lastCheck: 0, files: list(opts.files), work: [], added: today() };
   saveFeatures(project, features);
   return { id, status };
 }
@@ -85,6 +89,10 @@ export function setFeature(project, id, opts) {
     f.status = opts.status;
   }
   if (opts.title) f.title = String(opts.title).trim();
+  if (opts.risk) {
+    if (!RISKS.includes(opts.risk)) fail(`--risk must be one of ${RISKS.join(', ')}.`);
+    f.risk = opts.risk;
+  }
   if (opts.files) {
     const added = list(opts.files).filter((g) => !(f.files ?? []).includes(g));
     if (added.length && (f.files ?? []).length && !String(opts.reason ?? '').trim()) {
@@ -123,6 +131,7 @@ export function featureProblems(features) {
     if (!f.title) p.push(`${id}: no title`);
     if (!f.checks || typeof f.checks !== 'object') p.push(`${id}: checks must be an object`);
     if (!Array.isArray(f.decisions)) p.push(`${id}: decisions must be a list`);
+    if (f.risk != null && !RISKS.includes(f.risk)) p.push(`${id}: risk "${f.risk}" is not one of ${RISKS.join(', ')}`);
   }
   return p;
 }
