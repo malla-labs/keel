@@ -49,7 +49,11 @@ test('allowing the use through `module set` with a decision makes the import pas
 test('with modules defined, code outside every module is a warning and the brief names the modules', async () => {
   const dir = await layered();
   write(dir, 'src/util/strings.ts', 'export const a = 1;\n');
-  assert.match((await keel(dir, ['check'])).out, /WARN {2}src\/util\/strings\.ts: belongs to no module/);
+  write(dir, 'test/helpers.ts', 'export const h = 1;\n');
+  write(dir, 'test/a.test.ts', "// Covers: P-001\ntest('a', () => {});\n");
+  const out = (await keel(dir, ['check'])).out;
+  assert.match(out, /WARN {2}src\/util\/strings\.ts: belongs to no module/);
+  assert.doesNotMatch(out, /test\/helpers\.ts/);
   assert.match((await keel(dir, ['brief'])).out, /Architecture: 3 modules \(auth, calls, db\)/);
   const bare = await project();
   assert.match((await keel(bare, ['brief'])).out, /Architecture: no modules defined/);

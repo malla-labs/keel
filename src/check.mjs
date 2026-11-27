@@ -102,6 +102,7 @@ export function check(project, { changed = false, strict = false } = {}) {
   // Architecture: with modules defined, every code file belongs to one, and imports respect "may use".
   const arch = loadArchitecture(project);
   const hasModules = Object.keys(arch.modules).length > 0;
+  const testDirs = new Set(testFiles.map((t) => path.posix.dirname(t)));
   if (hasModules) {
     const archFile = architecturePath(project);
     const current = fs.existsSync(archFile) ? fs.readFileSync(archFile, 'utf8') : null;
@@ -111,7 +112,8 @@ export function check(project, { changed = false, strict = false } = {}) {
   for (const f of codeFiles) {
     const lines = readLines(root, f);
     if (hasModules) {
-      if (!moduleOf(arch, f)) warn(f, 'belongs to no module: add its folder to a module (`keel module set <name> --files …`) or move it');
+      // A helper next to the tests (test/helpers.mjs) is test support, not product code.
+      if (!moduleOf(arch, f) && !testDirs.has(path.posix.dirname(f))) warn(f, 'belongs to no module: add its folder to a module (`keel module set <name> --files …`) or move it');
       for (const b of boundaryProblems(project, arch, f, lines)) err(`${f}:${b.line}`, b.message, lines[b.line - 1]?.trim() ?? '');
     }
     lines.forEach((line, i) => {
