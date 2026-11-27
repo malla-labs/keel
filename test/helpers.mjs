@@ -44,8 +44,15 @@ export const productQuestion = [
   '--default', 'A, built as a settings value.',
 ];
 
+/** Writes an accepted engineering record. Options in `extra` replace the defaults of the same name. */
 export async function decision(dir, extra = []) {
-  const r = await keel(dir, ['decision', 'new', '--area', 'P', '--title', 'Bookings are stored in Postgres', '--kind', 'engineering', '--by', 'lead', '--status', 'accepted', '--decision', 'All bookings live in Postgres.', ...extra]);
+  const opts = new Map([['--area', 'P'], ['--title', 'Bookings are stored in Postgres'], ['--kind', 'engineering'], ['--by', 'lead'], ['--status', 'accepted'], ['--decision', 'All bookings live in Postgres.']]);
+  const rest = [];
+  for (let i = 0; i < extra.length; i++) {
+    if (opts.has(extra[i]) && i + 1 < extra.length) opts.set(extra[i], extra[++i]);
+    else rest.push(extra[i]);
+  }
+  const r = await keel(dir, ['decision', 'new', ...[...opts].flat(), ...rest]);
   if (r.code !== 0) throw new Error(r.err);
   return JSON.parse(r.out);
 }

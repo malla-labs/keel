@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fail, matchesAny as matchesGlobs, readJSON, today, walk as walkFiles, writeJSON } from './util.mjs';
+import { loadDecisions } from './decisions.mjs';
+import { citedDecisions, fail, matchesAny as matchesGlobs, readJSON, today, walk as walkFiles, writeJSON } from './util.mjs';
 
 export const STATUSES = ['planned', 'building', 'built', 'mocked', 'dropped'];
+// How much review a feature's changes get: low (correctness), normal (+ rules, quality), high (+ security, regressions).
+export const RISKS = ['low', 'normal', 'high'];
 const ID_RE = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/;
 
 export function loadFeatures(project) {
@@ -28,7 +31,9 @@ export function addFeature(project, id, opts) {
   if (!title) fail('--title is required.');
   const status = opts.status ?? 'planned';
   if (!STATUSES.includes(status)) fail(`--status must be one of ${STATUSES.join(', ')}.`);
-  features[id] = { title, status, decisions: [], checks: {}, lastCheck: 0, files: list(opts.files), work: [], added: today() };
+  const risk = opts.risk ?? 'normal';
+  if (!RISKS.includes(risk)) fail(`--risk must be one of ${RISKS.join(', ')}.`);
+  features[id] = { title, status, risk, decisions: [], checks: {}, lastCheck: 0, files: list(opts.files), work: [], added: today() };
   saveFeatures(project, features);
   return { id, status };
 }
@@ -85,6 +90,10 @@ export function setFeature(project, id, opts) {
     f.status = opts.status;
   }
   if (opts.title) f.title = String(opts.title).trim();
+  if (opts.risk) {
+    if (!RISKS.includes(opts.risk)) fail(`--risk must be one of ${RISKS.join(', ')}.`);
+    f.risk = opts.risk;
+  }
   if (opts.files) {
     const added = list(opts.files).filter((g) => !(f.files ?? []).includes(g));
     if (added.length && (f.files ?? []).length && !String(opts.reason ?? '').trim()) {
@@ -123,6 +132,7 @@ export function featureProblems(features) {
     if (!f.title) p.push(`${id}: no title`);
     if (!f.checks || typeof f.checks !== 'object') p.push(`${id}: checks must be an object`);
     if (!Array.isArray(f.decisions)) p.push(`${id}: decisions must be a list`);
+    if (f.risk != null && !RISKS.includes(f.risk)) p.push(`${id}: risk "${f.risk}" is not one of ${RISKS.join(', ')}`);
   }
   return p;
 }
@@ -137,10 +147,12 @@ export function builtProblems(project, id, f, { coverage, fingerprint }) {
   if (untested.length) p.push(`checks without a test: ${untested.map((n) => '#' + n).join(', ')}`);
   if (!f.verified) p.push('no verification recorded: run the verify command, then `keel feature verified ' + id + ' --command "<it>"`');
   else if (fingerprint(project, f) !== f.verified.fingerprint) p.push('the verification is stale: files changed after it; verify again');
-  const decisions = f.decisions ?? [];
+  // A superseded record is cited through the record that replaced it, which the feature links too.
+  const superseded = new Set(loadDecisions(project).filter((r) => r.status === 'superseded').map((r) => r.id));
+  const decisions = (f.decisions ?? []).filter((d) => !superseded.has(d));
   if (decisions.length && f.files?.length) {
-    const code = walkFeatureCode(project, f);
-    const uncited = decisions.filter((d) => !code.some((t) => t.includes(`Decision: ${d}`)));
+    const cited = new Set(walkFeatureCode(project, f).flatMap(citedDecisions));
+    const uncited = decisions.filter((d) => !cited.has(d));
     if (uncited.length) p.push(`decisions not cited in the feature's code: ${uncited.join(', ')} (add \`// Decision: <ID>\` where the rule is implemented)`);
   }
   return p;

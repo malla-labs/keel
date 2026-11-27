@@ -64,9 +64,9 @@ test('accepting a proposed product rule needs the owner', async () => {
 
 test('the brief says whether the person in the session is the owner', async () => {
   const team = await project();
-  assert.match((await keel(team, ['brief'])).out, /not known to be an owner: a product rule they state is --status proposed/);
+  assert.match((await keel(team, ['brief'])).out, /is not an owner: a product rule they state is written --status proposed/);
   const solo = await project(['--owner', 'josue', '--session-owner']);
-  assert.match((await keel(solo, ['brief'])).out, /Owner: the person in this session is the owner \(josue\)/);
+  assert.match((await keel(solo, ['brief'])).out, /Owner: the person in this session is the owner \(josue, by sessionOwner\)/);
 });
 
 test('keel reports its version, and the brief shows it', async () => {

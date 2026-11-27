@@ -1,7 +1,8 @@
+import { holderName, isHolder } from './team.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fail, matchesAny, readJSON, today, writeJSON } from './util.mjs';
-import { getFeature, list, loadFeatures } from './features.mjs';
+import { getFeature, list, loadFeatures, saveFeatures } from './features.mjs';
 import { indexDecisions, loadDecisions } from './decisions.mjs';
 
 export function loadScope(project) {
@@ -9,10 +10,17 @@ export function loadScope(project) {
 }
 
 /** Locks edits to one feature's files. The feature's own globs plus any extra --files. */
-export function startScope(project, featureId, extra) {
-  const f = getFeature(loadFeatures(project), featureId);
+export function startScope(project, featureId, extra, { take = false } = {}) {
+  const features = loadFeatures(project);
+  const f = getFeature(features, featureId);
   const files = [...new Set([...(f.files ?? []), ...list(extra)])];
   if (!files.length) fail(`Feature ${featureId} names no files.`, 'Pass --files with the globs this work may touch, or set them on the feature.');
+  // The holder is committed with the feature, so teammates see who works on it before they start.
+  if (f.holder && !isHolder(project, f.holder) && !take) {
+    fail(`${featureId} is held by ${f.holder.by} since ${f.holder.since}.`, 'Agree with them first; then `keel scope start ' + featureId + ' --take` records that you took it over.');
+  }
+  f.holder = { by: holderName(project) ?? 'someone without a git identity', since: today() };
+  saveFeatures(project, features);
   const scope = { feature: featureId, files, widened: [], deps: [], started: today() };
   writeJSON(project.paths.scope, scope);
   return scope;
@@ -38,6 +46,14 @@ export function allowDeps(project, decisionId) {
 }
 
 export function clearScope(project) {
+  const scope = loadScope(project);
+  if (scope?.feature) {
+    const features = loadFeatures(project);
+    if (isHolder(project, features[scope.feature]?.holder)) {
+      delete features[scope.feature].holder;
+      saveFeatures(project, features);
+    }
+  }
   if (fs.existsSync(project.paths.scope)) fs.rmSync(project.paths.scope);
   return { cleared: true };
 }
@@ -84,7 +100,7 @@ function judgeFile(project, scope, rel, content) {
   if (rel === '.keel/project.json') {
     return { allow: false, reason: '.keel/project.json holds the rules that check your work; a change cannot edit its own checks. Ask the user to change it.' };
   }
-  if (['.keel/questions.json', '.keel/scope.json', '.keel/features.json', '.keel/baseline.json', '.keel/history.jsonl'].includes(rel)) {
+  if (['.keel/questions.json', '.keel/scope.json', '.keel/features.json', '.keel/baseline.json', '.keel/history.jsonl', '.keel/reviews.json', '.keel/architecture.json'].includes(rel)) {
     return { allow: false, reason: `${rel} is written by the keel CLI only. Use \`keel question …\`, \`keel feature …\` or \`keel scope …\`.` };
   }
   if (cfg.mode === 'light') return { allow: true };

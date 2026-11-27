@@ -6,6 +6,7 @@ import { loadFeatures, saveFeatures, getFeature, linkProblem, STATUSES } from '.
 import { loadQuestions } from './questions.mjs';
 import { indexDecisions, loadDecisions } from './decisions.mjs';
 import { loadScope } from './scope.mjs';
+import { openFindings } from './reviews.mjs';
 
 const COVERS_RE = /\bCovers:\s*([^\n*]+)/g;
 const CHECK_REF_RE = /[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*#\d+/g;
@@ -67,7 +68,7 @@ export function fingerprint(project, f) {
  * Records that the feature was verified: allowed only when every check has a test and
  * `keel check` passes. Stores the command run and a fingerprint of the feature's files.
  */
-export function markVerified(project, id, command, checkResult) {
+export function markVerified(project, id, command, checkResult, evidence = []) {
   const features = loadFeatures(project);
   const f = getFeature(features, id);
   const cmd = String(command ?? '').trim();
@@ -78,7 +79,8 @@ export function markVerified(project, id, command, checkResult) {
   const cov = coverage(project);
   const missing = n.filter((k) => !cov.has(`${id}#${k}`));
   if (missing.length) fail(`${id} checks without a test: ${missing.map((k) => `#${k}`).join(', ')}. Every check needs its test before the feature is verified.`);
-  f.verified = { at: now(), command: cmd, fingerprint: fingerprint(project, f) };
+  // Evidence is what the command alone does not show: a screenshot path, a manual run in a browser, a log.
+  f.verified = { at: now(), command: cmd, fingerprint: fingerprint(project, f), ...(evidence.length ? { evidence } : {}) };
   saveFeatures(project, features);
   return { id, verified: f.verified };
 }
@@ -102,6 +104,7 @@ export function featureProgress(project, id, f, cov, questions, byId) {
     work: (f.work ?? []).length,
     questions: questions.filter((q) => q.feature === id).map((q) => `Q-${q.id}`),
     proposed: (f.decisions ?? []).filter((d) => byId.get(d)?.status === 'proposed'),
+    findings: openFindings(project, id).map((x) => `R-${x.id}`),
   };
 }
 
@@ -191,6 +194,7 @@ export function formatProgress(p, onlyId) {
       f.work ? `${f.work} work` : null,
       f.questions.length ? `waits on ${f.questions.join(', ')}` : null,
       f.proposed.length ? `proposed ${f.proposed.join(', ')}` : null,
+      f.findings?.length ? `open findings ${f.findings.join(', ')}` : null,
     ].filter(Boolean).join(' · ');
     out.push(`${f.id.padEnd(26)} ${f.status.padEnd(8)} ${bar(f.percent)} ${String(f.percent).padStart(3)}%  ${f.covered}/${f.checks} checks${flags ? '  · ' + flags : ''}`);
     if (onlyId) for (const u of f.uncovered) out.push(`  no test: ${u}`);

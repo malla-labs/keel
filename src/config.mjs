@@ -26,7 +26,7 @@ export const DEFAULT_CONFIG = {
   alwaysInScope: ['docs/**', '.keel/**'],
   gate: 'enforce',
   gateMaxBlocks: 2,
-  verify: { quick: null, full: null, app: null },
+  verify: { quick: null, full: null, app: null, lint: null, types: null },
   pattern: null,
   stacks: [],
 };

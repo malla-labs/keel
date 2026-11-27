@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fail, slugify, today, writeText } from './util.mjs';
+import { fail, matchesAny, slugify, today, walk, writeText } from './util.mjs';
+import { ownerNames, requireOwner } from './team.mjs';
 
 const ID_RE = /^([A-Z])-(\d+)$/;
 // The "who" part may carry its own commas ("the lead, on the owner's request"); the date is always last.
@@ -118,9 +119,7 @@ export function newDecision(project, opts) {
   if (!by) fail('--by is required: who stated or proposed this rule.');
   let status = opts.status ?? 'proposed';
   if (!['proposed', 'accepted'].includes(status)) fail('--status must be "proposed" or "accepted".');
-  if (status === 'accepted' && kind === 'product' && !cfg.owners.includes(by)) {
-    fail(`Only an owner (${cfg.owners.join(', ')}) accepts a product rule; "${by}" may only propose it.`, 'Write it with --status proposed and ask the owner with `keel question add`.');
-  }
+  if (status === 'accepted' && kind === 'product') requireOwner(project, by, 'accepts a product rule');
   if (kind === 'product' && status === 'accepted' && !String(opts.quote ?? '').trim()) {
     fail('An accepted product rule must quote the owner: pass --quote with their words.');
   }
@@ -133,6 +132,11 @@ export function newDecision(project, opts) {
     old = byId.get(opts.supersedes);
     if (!old) fail(`Cannot supersede ${opts.supersedes}: no such record.`);
     if (old.status === 'superseded') fail(`${old.id} is already superseded by ${old.supersededBy}. Supersede ${old.supersededBy} instead.`);
+    // Retiring a product rule is a product decision: only the owner, with an accepted replacement.
+    if (old.kind === 'product') {
+      if (status !== 'accepted') fail(`${old.id} is a product rule: it is superseded only by an accepted record.`, 'Write the new rule --status proposed without --supersedes, and ask the owner; the owner supersedes it.');
+      requireOwner(project, by, `supersedes product rule ${old.id}`);
+    }
   }
   const id = nextId(project, letter);
   const slug = slugify(title);
@@ -147,7 +151,7 @@ export function newDecision(project, opts) {
     Code: opts.code ?? 'None yet.',
     Flows: opts.flows ?? 'None.',
   };
-  if (opts.quote) body.Why = `${cfg.owners.includes(by) ? `The ${by}` : by}, ${date}: "${String(opts.quote).trim()}"` + (body.Why ? `\n\n${body.Why}` : '');
+  if (opts.quote) body.Why = `${ownerNames(cfg).includes(by) ? `The ${by}` : by}, ${date}: "${String(opts.quote).trim()}"` + (body.Why ? `\n\n${body.Why}` : '');
   if (old) body.Context = `Replaces ${old.id} (${old.title}).` + (body.Context ? `\n\n${body.Context}` : '');
   if (!String(body.Decision ?? '').trim()) fail('--decision is required: the rule, stated exactly, with every number and its unit.');
   if (!String(body.Why ?? '').trim()) body.Why = `Unknown. Needs the owner's answer: why ${title.charAt(0).toLowerCase() + title.slice(1)}?`;
@@ -175,7 +179,7 @@ export function acceptDecision(project, id, by, quote) {
   const rec = indexDecisions(loadDecisions(project)).get(id);
   if (!rec) fail(`No record ${id}.`);
   if (rec.status !== 'proposed') fail(`${id} is ${rec.status}, not proposed.`);
-  if (rec.kind === 'product' && !cfg.owners.includes(by)) fail(`Only an owner (${cfg.owners.join(', ')}) accepts a product rule.`);
+  if (rec.kind === 'product') requireOwner(project, by, 'accepts a product rule');
   if (rec.kind === 'product' && !String(quote ?? '').trim()) fail('Accepting a product rule needs --quote with the owner\'s words.');
   const date = today();
   let text = fs.readFileSync(rec.file, 'utf8');
@@ -183,4 +187,35 @@ export function acceptDecision(project, id, by, quote) {
   if (quote) text = text.replace(/^## Why\n\n/m, `## Why\n\nThe ${by}, ${date}: "${String(quote).trim()}"\n\n`);
   fs.writeFileSync(rec.file, text);
   return { id, status: 'accepted' };
+}
+
+/**
+ * Gives a record a new number in its area: after a merge, two branches may both have written P-012.
+ * Renames the file, rewrites its title, and replaces the old id in the files `refs` names (the files
+ * that came with that record, which cite it). Other references stay: they cite the record that kept the number.
+ */
+export function renumberRecord(project, recordFile, refs) {
+  const abs = path.resolve(project.root, recordFile);
+  if (!fs.existsSync(abs)) fail(`${recordFile} does not exist.`);
+  const rec = parseRecord(abs, fs.readFileSync(abs, 'utf8'));
+  if (!rec.id) fail(`${recordFile} is not a decision record.`);
+  const { letter } = parseId(rec.id);
+  const id = nextId(project, letter);
+  const target = path.join(path.dirname(abs), path.basename(abs).replace(rec.id, id));
+  const text = fs.readFileSync(abs, 'utf8').replace(new RegExp(`^# ${rec.id}:`), `# ${id}:`);
+  fs.writeFileSync(target, text);
+  fs.rmSync(abs);
+  const re = new RegExp(`\\b${rec.id}\\b`, 'g');
+  const changed = [];
+  if (refs?.length) {
+    // Record files are left alone: the one that kept the number must keep its title.
+    const records = path.relative(project.root, project.paths.decisions).split(path.sep).join('/') + '/';
+    for (const rel of walk(project.root, project.cfg.ignore).filter((f) => matchesAny(f, refs) && !f.startsWith(records))) {
+      const f = path.join(project.root, rel);
+      const before = fs.readFileSync(f, 'utf8');
+      const after = before.replace(re, id);
+      if (after !== before) { fs.writeFileSync(f, after); changed.push(rel); }
+    }
+  }
+  return { from: rec.id, to: id, file: path.relative(project.root, target), references: changed };
 }

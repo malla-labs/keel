@@ -22,7 +22,7 @@ export function init(root, opts = {}) {
     pattern: opts.pattern ?? null,
     stacks: opts.stacks ?? [],
     gate: 'enforce',
-    verify: { quick: null, full: null, app: null },
+    verify: { quick: null, full: null, app: null, lint: null, types: null },
   };
   if (!['full', 'light'].includes(cfg.mode)) fail('--mode must be "full" or "light".');
   writeJSON(cfgFile, cfg);

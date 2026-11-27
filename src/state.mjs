@@ -1,3 +1,5 @@
+import { loadArchitecture } from './architecture.mjs';
+import { isHolder, ownerNames, sessionOwner } from './team.mjs';
 import fs from 'node:fs';
 import { fail, writeText } from './util.mjs';
 
@@ -112,10 +114,10 @@ export function brief(project) {
     `keel ${version()} · ${cfg.name || 'project'} · mode ${cfg.mode}${cfg.pattern ? ` · pattern ${cfg.pattern}` : ''}`,
     `Features: ${STATUSES.filter(count).map((s) => `${count(s)} ${s}`).join(', ') || 'none'}. Decisions: ${records.length} (${records.filter((r) => r.status === 'proposed').length} proposed).`,
     `Open questions: ${owner.length} for the owner, ${store.open.length - owner.length} engineering.`,
-    cfg.sessionOwner
-      ? `Owner: the person in this session is the owner (${cfg.owners[0]}); product rules they state are accepted with --by ${cfg.owners[0]} and their quote.`
-      : `Owner: ${cfg.owners.join(', ')}. The person in this session is not known to be an owner: a product rule they state is --status proposed, unless they say in this session that they are the owner.`,
+    ownerLine(project),
     `Progress: ${progress(project).overall}% overall.`,
+    architectureLine(project),
+    ...heldLine(project, features),
     scope ? `Scope: ${scope.feature ?? '(deps only)'}${scope.files ? ` — ${scope.files.join(', ')}` : ''}${scope.deps.length ? ` — deps allowed by ${scope.deps.join(', ')}` : ''}.` : 'Scope: none active.',
     'Rules: the owner states a rule → `/keel:decide` before building. Product questions → `/keel:ask`, in its pattern. Tests cite `Covers:`. Done means `keel check` passes.',
   ];
@@ -125,4 +127,26 @@ export function brief(project) {
     lines.splice(1, 0, '', 'The project:', ...s.slice(0, 15), ...(s.length > 15 ? [`… (${s.length - 15} more lines in ${project.cfg.state})`] : []), '');
   } else lines.push('No project summary yet: run /keel:adopt (existing code) or give the project brief and register it.');
   return lines.join('\n');
+}
+
+/** One line for the brief: the modules and where the rules are, or that none are defined. */
+function architectureLine(project) {
+  const names = Object.keys(loadArchitecture(project).modules);
+  if (!names.length) return 'Architecture: no modules defined. Before the first feature, settle the stack and layout with the owner, record them with `/keel:decide`, and add the modules with `keel module add`.';
+  return `Architecture: ${names.length} modules (${names.join(', ')}); each imports only what docs/ARCHITECTURE.md allows. New code goes in a module.`;
+}
+
+/** Who decides product rules, and whether that is the person in this session (by git identity on a team). */
+function ownerLine(project) {
+  const me = sessionOwner(project);
+  const names = ownerNames(project.cfg).join(', ');
+  if (me) return `Owner: the person in this session is the owner (${me.owner}, by ${me.by}); product rules they state are accepted with --by "${me.owner}" and their quote.`;
+  return `Owner: ${names}. The person in this session is not an owner${project.cfg.owners.some((o) => /<.+>/.test(o)) ? ' (their git identity matches no owner)' : ''}: a product rule they state is written --status proposed and asked with /keel:ask; only the owner's own session accepts it.`;
+}
+
+/** Features other people hold right now, so a session does not start on someone else's work. */
+function heldLine(project, features) {
+  const held = Object.entries(features).filter(([, f]) => f.holder && !isHolder(project, f.holder));
+  if (!held.length) return [];
+  return [`Held by others: ${held.map(([id, f]) => `${id} (${f.holder.by.replace(/ <.*>$/, '')}, since ${f.holder.since})`).join('; ')}. Do not start on these without agreeing first.`];
 }

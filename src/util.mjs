@@ -116,3 +116,26 @@ export function slugify(title) {
     .slice(0, 80)
     .replace(/-+$/, '');
 }
+
+// `Decision: P-001` or a list, `Decision: D-001, P-004, P-006`. Every id in the list counts as cited.
+const CITE_LIST_RE = /\bDecision:\s*([A-Z]-\d+(?:\s*,\s*[A-Z]-\d+)*)/g;
+
+/** The decision ids a text cites, in order, with repeats. */
+export function citedDecisions(text) {
+  const ids = [];
+  for (const m of String(text).matchAll(CITE_LIST_RE)) ids.push(...m[1].split(',').map((s) => s.trim()));
+  return ids;
+}
+
+// `Q-3`, as written in code comments that point at an open question.
+const QUESTION_REF_RE = /\bQ-(\d+)\b/g;
+// Where a comment starts on a line: //, #, /*, a leading *, --, <!--. Only the text after it is read,
+// so a string such as "Q-7" (a part number, a quarter) is never taken for a question.
+const COMMENT_START_RE = /\/\/|\/\*|<!--|(?:^|\s)#|(?:^|\s)--\s|^\s*\*/;
+
+/** The question numbers a line's comment names. Code outside the comment is ignored. */
+export function citedQuestions(line) {
+  const m = COMMENT_START_RE.exec(String(line));
+  if (!m) return [];
+  return [...String(line).slice(m.index).matchAll(QUESTION_REF_RE)].map((x) => Number(x[1]));
+}

@@ -25,10 +25,12 @@ test('install keeps an existing hook and runs keel before its exit; uninstall re
   assert.ok(text.indexOf('keel:begin') < text.indexOf('echo mine'));
   await keel(dir, ['githooks', 'install']);
   assert.equal((read(dir, '.git/hooks/pre-commit').match(/keel:begin/g) || []).length, 1);
-  assert.deepEqual(JSON.parse((await keel(dir, ['githooks', 'status'])).out), { 'pre-commit': 'installed', 'commit-msg': 'installed', 'pre-push': 'installed' });
+  assert.deepEqual(JSON.parse((await keel(dir, ['githooks', 'status'])).out), { 'pre-commit': 'installed', 'commit-msg': 'installed', 'pre-push': 'installed', 'post-merge': 'installed', 'merge-driver': 'installed' });
   await keel(dir, ['githooks', 'uninstall']);
   assert.equal(read(dir, '.git/hooks/pre-commit'), '#!/bin/sh\necho mine\nexit 0\n');
   assert.equal(fs.existsSync(path.join(dir, '.git/hooks/commit-msg')), false);
+  assert.equal(fs.existsSync(path.join(dir, '.gitattributes')), false);
+  assert.equal(JSON.parse((await keel(dir, ['githooks', 'status'])).out)['merge-driver'], 'missing');
 });
 
 test('pre-commit blocks a commit whose changed files fail check, and allows a clean one', async () => {

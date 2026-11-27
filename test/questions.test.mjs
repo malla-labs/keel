@@ -28,7 +28,7 @@ test('the same question cannot be open twice', async () => {
 test('only an owner answers a product question; numbers are never reused', async () => {
   const dir = await project();
   await keel(dir, productQuestion);
-  assert.match((await keel(dir, ['question', 'answer', 'Q-1', '--answer', 'A', '--by', 'lead'])).err, /only an owner/);
+  assert.match((await keel(dir, ['question', 'answer', 'Q-1', '--answer', 'A', '--by', 'lead'])).err, /Only an owner \(owner\) answers product question Q-1/);
   const ok = await keel(dir, ['question', 'answer', 'Q-1', '--answer', 'A', '--by', 'owner', '--quote', 'half']);
   assert.equal(ok.code, 0);
   assert.match(read(dir, 'docs/decisions/RESOLUTIONS_2026-11-25.md'), /\| Q-1 \| What refund.*\| A\) 50% refund \("half"\) \| owner \|/);

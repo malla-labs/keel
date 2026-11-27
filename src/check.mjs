@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { gitChanged, matchesAny, readJSON, walk, writeJSON } from './util.mjs';
+import { citedDecisions, citedQuestions, gitChanged, matchesAny, readJSON, walk, writeJSON } from './util.mjs';
 import { indexDecisions, loadDecisions } from './decisions.mjs';
 import { loadQuestions, questionProblems, renderOpenQuestionsText } from './questions.mjs';
 import { featureProblems, linkProblem, loadFeatures } from './features.mjs';
 import { renderStateText } from './state.mjs';
+import { architecturePath, boundaryProblems, loadArchitecture, moduleOf, renderArchitectureText } from './architecture.mjs';
 
-const CITE_RE = /\bDecision:\s*([A-Z]-\d+)/g;
 const COVERS_RE = /\bCovers:\s*([^\n*]+)/g;
 const REF_RE = /[A-Z]-\d+|[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*#\d+/g;
 const CASE_RES = [
@@ -85,6 +85,10 @@ export function check(project, { changed = false, strict = false } = {}) {
     }
   }
 
+  // A question named in code is a placeholder for an answer. Once answered, the code should cite the decision.
+  const openIds = new Set(store.open.map((q) => q.id));
+  const closedBy = new Map((store.closed ?? []).map((c) => [c.id, c]));
+
   // Code and tests.
   let files = walk(root, cfg.ignore);
   if (changed) {
@@ -95,10 +99,26 @@ export function check(project, { changed = false, strict = false } = {}) {
   const codeFiles = files.filter((f) => matchesAny(f, cfg.code) && !testFiles.includes(f));
   const covered = new Map();
 
+  // Architecture: with modules defined, every code file belongs to one, and imports respect "may use".
+  const arch = loadArchitecture(project);
+  const hasModules = Object.keys(arch.modules).length > 0;
+  const testDirs = new Set(testFiles.map((t) => path.posix.dirname(t)));
+  if (hasModules) {
+    const archFile = architecturePath(project);
+    const current = fs.existsSync(archFile) ? fs.readFileSync(archFile, 'utf8') : null;
+    if (current !== renderArchitectureText(project, current)) err(rel(archFile), 'is out of date with .keel/architecture.json: run `keel render`');
+  }
+
   for (const f of codeFiles) {
     const lines = readLines(root, f);
+    if (hasModules) {
+      // A helper next to the tests (test/helpers.mjs) is test support, not product code.
+      if (!moduleOf(arch, f) && !testDirs.has(path.posix.dirname(f))) warn(f, 'belongs to no module: add its folder to a module (`keel module set <name> --files …`) or move it');
+      for (const b of boundaryProblems(project, arch, f, lines)) err(`${f}:${b.line}`, b.message, lines[b.line - 1]?.trim() ?? '');
+    }
     lines.forEach((line, i) => {
-      for (const m of line.matchAll(CITE_RE)) citeProblem(m[1], `${f}:${i + 1}`);
+      for (const id of citedDecisions(line)) citeProblem(id, `${f}:${i + 1}`);
+      for (const n of citedQuestions(line)) questionRefProblem(n, `${f}:${i + 1}`);
     });
   }
 
@@ -107,6 +127,14 @@ export function check(project, { changed = false, strict = false } = {}) {
     if (!r) return err(where, `cites ${id}, which does not exist`);
     if (r.status === 'proposed' && r.kind === 'product') err(where, `cites ${id}, a product rule the owner has not accepted`);
     if (r.status === 'superseded') warn(where, `cites ${id}, superseded by ${r.supersededBy}`);
+  }
+
+  function questionRefProblem(n, where) {
+    if (openIds.has(n)) return;
+    if (n > store.lastId) return warn(where, `names Q-${n}, which was never asked`);
+    const c = closedBy.get(n);
+    const settled = c?.decision ? `; cite ${c.decision} instead` : c?.withdrawn ? ' (withdrawn); remove the reference' : '; cite the decision that settled it, or remove the reference';
+    warn(where, `names Q-${n}, which is no longer open${settled}`);
   }
 
   function refProblem(ref, where) {

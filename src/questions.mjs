@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { requireOwner } from './team.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fail, readJSON, today, writeJSON, writeText } from './util.mjs';
@@ -70,7 +72,7 @@ export function addQuestion(project, input) {
   if (dup) fail(`The same question is already open as Q-${dup.id}.`);
   const id = store.lastId + 1;
   store.lastId = id;
-  store.open.push({ id, ...q, asked: today() });
+  store.open.push({ id, uid: randomUUID().slice(0, 8), ...q, asked: today() });
   writeJSON(project.paths.questions, store);
   renderOpenQuestions(project);
   return { id, kind: q.kind };
@@ -89,7 +91,7 @@ export function answerQuestion(project, idArg, opts) {
   const q = store.open[i];
   const by = String(opts.by ?? '').trim();
   if (!by) fail('--by is required: who answered.');
-  if (q.kind === 'product' && !cfg.owners.includes(by)) fail(`Q-${id} is a product question: only an owner (${cfg.owners.join(', ')}) answers it.`);
+  if (q.kind === 'product') requireOwner(project, by, `answers product question Q-${id}`);
   let answer = String(opts.answer ?? '').trim();
   if (!answer) fail('--answer is required.');
   const opt = q.options.find((o) => o.key === answer.toUpperCase());
@@ -107,6 +109,7 @@ export function answerQuestion(project, idArg, opts) {
     saveFeatures(project, features);
   }
   store.open.splice(i, 1);
+  store.closed = [...(store.closed ?? []), { id, ...(q.uid ? { uid: q.uid } : {}), answered: date, by, ...(opts.decision ? { decision: opts.decision } : {}) }];
   writeJSON(project.paths.questions, store);
   renderOpenQuestions(project);
   return { id, answer, filed: path.relative(project.root, resolutionFile(project, date)) };
@@ -125,6 +128,7 @@ export function withdrawQuestion(project, idArg, opts) {
   const q = store.open[i];
   appendResolution(project, today(), `| Q-${id} | ${cell(q.question)} | Withdrawn: ${cell(reason)} | ${by} | — |`);
   store.open.splice(i, 1);
+  store.closed = [...(store.closed ?? []), { id, ...(q.uid ? { uid: q.uid } : {}), withdrawn: today(), by }];
   writeJSON(project.paths.questions, store);
   renderOpenQuestions(project);
   return { id, withdrawn: true };

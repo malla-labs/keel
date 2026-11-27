@@ -14,4 +14,5 @@ argument-hint: "<Q-number> <answer>"
      [--decision <ID>] [--work "<what remains to build>"]
    ```
 4. If the answer differs from the default you built, list the code to change and add it with `--work`.
-5. `keel check`; quote its last line.
+5. **Code that named the question** (`Default until Q-3 is answered`) now cites the decision instead: `keel check` warns on every `Q-n` that is no longer open. That edit belongs to the question's feature, through `/keel:feature`.
+6. `keel check`; quote its last line.
