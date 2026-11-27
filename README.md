@@ -13,7 +13,7 @@ The rules live in a small command-line tool and in hooks, not only in instructio
 | **No code without a feature** | Code changes belong to a registered feature. The guard blocks edits outside the feature's files, dependency changes without a decision, and edits to keel's own records |
 | **Targeted tests** | Each feature has numbered checks; each check gets one test that cites it (`Covers: booking.cancel#2`). An uncited test fails |
 | **Proven, not claimed** | "Built" is refused until every check has a test, a verification is recorded and still current, and the code cites its decisions. A stop gate keeps Claude working while `keel check` fails |
-| **Fresh-eyes review** | Reviewers that never saw the reasoning look for bugs and broken rules; a separate verifier confirms each finding |
+| **Fresh-eyes review** | Reviewers that never saw the reasoning look for bugs and broken rules; a separate verifier confirms each finding. Findings are numbered records (`R-n`), and an open important one blocks "built" |
 | **Progress you can trust** | Per feature, per scope and per week, computed from the files: tests, verifications, history |
 | **Git hooks** | The same checks for people and other tools: pre-commit, commit-msg (adds the feature), pre-push |
 
@@ -65,7 +65,7 @@ Scope: booking.cancel since 2026-11-25 · 2 files changed in scope · widened 0�
 
 ## How it is tested
 
-- **Unit tests** (`npm test`): 53 tests, one per guarantee the CLI makes.
+- **Unit tests** (`npm test`): 60 tests, one per guarantee the CLI makes.
 - **Scenario evals** (`node evals/run.mjs`): 14 scenarios run as real headless Claude Code sessions and graded with code (files, git and `keel check`), not by a model. Each scenario passes 3 runs out of 3: recording a rule, a conflicting rule, asking and answering questions, building a feature, widening a scope, adding a dependency, reviewing planted bugs, adopting a project, committing through the git hooks, registering a new project from a brief, fixing a bug, a flaky test, and a request that conflicts with an accepted rule.
 
 ```bash

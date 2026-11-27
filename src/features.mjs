@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fail, matchesAny as matchesGlobs, readJSON, today, walk as walkFiles, writeJSON } from './util.mjs';
+import { citedDecisions, fail, matchesAny as matchesGlobs, readJSON, today, walk as walkFiles, writeJSON } from './util.mjs';
 
 export const STATUSES = ['planned', 'building', 'built', 'mocked', 'dropped'];
 const ID_RE = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/;
@@ -139,8 +139,8 @@ export function builtProblems(project, id, f, { coverage, fingerprint }) {
   else if (fingerprint(project, f) !== f.verified.fingerprint) p.push('the verification is stale: files changed after it; verify again');
   const decisions = f.decisions ?? [];
   if (decisions.length && f.files?.length) {
-    const code = walkFeatureCode(project, f);
-    const uncited = decisions.filter((d) => !code.some((t) => t.includes(`Decision: ${d}`)));
+    const cited = new Set(walkFeatureCode(project, f).flatMap(citedDecisions));
+    const uncited = decisions.filter((d) => !cited.has(d));
     if (uncited.length) p.push(`decisions not cited in the feature's code: ${uncited.join(', ')} (add \`// Decision: <ID>\` where the rule is implemented)`);
   }
   return p;

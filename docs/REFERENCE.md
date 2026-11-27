@@ -62,7 +62,7 @@ Options take a value as the next argument or with `=` (`--area=S`). A repeated o
 
 ### `keel version` (or `--version`, `-v`)
 
-Prints the installed keel version. The session brief's first line shows it too (`keel 0.6.1 · <project> · …`).
+Prints the installed keel version. The session brief's first line shows it too (`keel 0.7.0 · <project> · …`).
 
 ### `keel rules [rules|questions|briefing]`
 
@@ -135,9 +135,23 @@ Marks the end of an adoption in the history. The weekly table counts only what h
 
 Installs `pre-commit` (`keel hook git pre-commit`: `check --changed`), `commit-msg` (adds `Feature: <id>` when a scope is active) and `pre-push` (`check`, then `verify.quick`) into `core.hooksPath` or `.git/hooks`. Each is a marked block placed first in the hook file, so an existing hook's `exit 0` cannot skip it; uninstall removes only the block and deletes a file left empty. The block finds `keel` on PATH, else the CLI that installed it; without either it prints a note and lets git go on. `gate` decides: `enforce` blocks (exit 1), `observe` prints, `off` skips.
 
-### `keel feature verified <ID> --command CMD`
+### `keel feature verified <ID> --command CMD [--evidence TEXT ...]`
 
-Records that the feature's verification passed: the command, the time and a fingerprint of the contents of the files matching the feature's globs. Refused while any check has no test or `keel check` has errors. When the fingerprint no longer matches, the feature shows as `stale`.
+Records that the feature's verification passed: the command, the time, a fingerprint of the contents of the files matching the feature's globs, and any `--evidence` given (what the command alone does not show: a screenshot path, a flow driven in the app). Refused while any check has no test or `keel check` has errors. When the fingerprint no longer matches, the feature shows as `stale`.
+
+`keel feature verified --stale --command CMD` records the verification again for every feature that is stale, after one passing run of the full test command. Use it when a shared file (a server entry point, a config) made several features stale at once.
+
+### `keel review add|resolve|list`
+
+Review findings are records, like decisions and questions. `/keel:review` writes each one the verifier judged, in `.keel/reviews.json` (CLI only):
+
+| Command | Does |
+|---|---|
+| `review add --feature F --severity important\|nit\|pre-existing --verdict confirmed\|rejected --summary TEXT [--where PATH:LINE] [--reason WHY]` | Numbers the finding `R-n`. A confirmed one is `open`; a rejected one is closed at once and needs `--reason` |
+| `review resolve R-n --fixed WHAT \| --answered WHY` | Closes an open finding: fixed, or kept with a reason |
+| `review list [--open] [--feature F]` | Prints the findings |
+
+An open `important` finding blocks `feature set <id> --status built`. `keel progress` shows open findings per feature.
 
 ### `keel progress [FEATURE] [--json]`
 
@@ -153,7 +167,7 @@ Records that the feature's verification passed: the command, the time and a fing
 
 ### History log
 
-`.keel/history.jsonl`, one JSON event per line, written by the CLI only: `decision.new`, `decision.accept`, `question.add`, `question.answer`, `question.withdraw`, `feature.add`, `feature.check`, `feature.status` (with `from` and `to`), `feature.verified`, `feature.link`, `summary.set`, `adopt.done`, `githooks.install`, `scope.start`, `scope.widen` (with the reason), `scope.deps`, `scope.clear`. Each has `at` (ISO time) and the ids involved.
+`.keel/history.jsonl`, one JSON event per line, written by the CLI only: `decision.new`, `decision.accept`, `question.add`, `question.answer`, `question.withdraw`, `feature.add`, `feature.check`, `feature.status` (with `from` and `to`), `feature.verified` (with `evidence`, or `stale: true`), `feature.link`, `review.finding`, `review.resolve`, `summary.set`, `adopt.done`, `githooks.install`, `scope.start`, `scope.widen` (with the reason), `scope.deps`, `scope.clear`. Each has `at` (ISO time) and the ids involved.
 
 ### `keel scope …`
 
@@ -239,7 +253,7 @@ Status values: `proposed (<who>, <date>)`, `accepted (<who>, <date>)`, `supersed
 ### questions.json
 
 ```json
-{ "lastId": 12, "open": [ { "id": 12, "kind": "product", "question": "…?", "blocks": "…",
+{ "lastId": 12, "closed": [ { "id": 11, "answered": "2026-11-25", "by": "owner", "decision": "D-004" } ], "open": [ { "id": 12, "kind": "product", "question": "…?", "blocks": "…",
   "options": [ { "key": "A", "text": "…", "recommended": true }, { "key": "B", "text": "…" } ],
   "default": "…", "feature": "booking.cancel", "decision": "S-001", "asked": "2026-11-25" } ] }
 ```
@@ -267,7 +281,7 @@ Status values: `proposed (<who>, <date>)`, `accepted (<who>, <date>)`, `supersed
 | Questions | Missing parts of the pattern; wrong option keys; not exactly one recommended; unknown feature or decision; number above `lastId`; duplicate numbers; `OPEN_QUESTIONS.md` out of date | |
 | Features | Bad id or status; no title; a cited decision that does not exist | |
 | State | — (the generated block is refreshed in place, so progress stays current) | |
-| Code | `Decision: <ID>` that does not exist, or a proposed product rule | Cites a superseded rule |
+| Code | `Decision: <ID>` that does not exist, or a proposed product rule (every id in a `Decision: A, B` list counts); a `Q-n` above `lastId` | Cites a superseded rule; names a `Q-n` that is answered or withdrawn (cite its decision instead) |
 | Tests | A case that cites nothing (by `tests.require`); `Covers:` naming a missing feature, check or decision | A check of a `building`/`built` feature with no test, or more than one |
 
 ---
@@ -277,7 +291,7 @@ Status values: `proposed (<who>, <date>)`, `accepted (<who>, <date>)`, `supersed
 | Call | Blocked when | In light mode |
 |---|---|---|
 | Edit/Write of `OPEN_QUESTIONS.md` | Always: it is generated | Blocked |
-| Edit/Write of `.keel/questions.json`, `features.json`, `scope.json`, `baseline.json`, `history.jsonl` | Always: CLI only | Blocked |
+| Edit/Write of `.keel/questions.json`, `features.json`, `scope.json`, `baseline.json`, `history.jsonl`, `reviews.json` | Always: CLI only | Blocked |
 | Edit/Write of `.keel/project.json` | Always: a change cannot edit its own checks | Blocked |
 | Bash writing to those `.keel` files (`>`, `tee`, `sed -i`, `rm`, `mv`, `cp`, `truncate`) | Always | Blocked |
 | Edit/Write of a manifest file | No `scope deps` decision. For `package.json`, only when a dependency field (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`, `overrides`, `resolutions`) changes; scripts are free | Allowed |

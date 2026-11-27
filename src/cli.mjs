@@ -14,6 +14,7 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { init } from './init.mjs';
 import { coverage, fingerprint, formatProgress, logEvent, markVerified, progress } from './progress.mjs';
+import { addFinding, formatFinding, loadReviews, openFindings, resolveFinding } from './reviews.mjs';
 
 const HELP = `keel: decisions, questions, features and guards for a project.
 
@@ -36,8 +37,13 @@ const HELP = `keel: decisions, questions, features and guards for a project.
   keel feature check <ID> --add TEXT [--test 'FILE::TEST NAME']   (--test links an existing test, no edit needed)
   keel feature check <ID> --link N --test 'FILE::TEST NAME'
   keel feature set <ID> [--status S] [--files GLOBS --reason WHY] [--decision IDS] [--remove-check N] [--done-work N]
-  keel feature verified <ID> --command CMD   (record a passing verification; needs a test per check and a clean check)
+  keel feature verified <ID> --command CMD [--evidence TEXT ...]   (record a passing verification; needs a test per check and a clean check)
+  keel feature verified --stale --command CMD   (verify again every feature whose files changed after its verification)
   keel feature list | show <ID>
+  keel review add --feature F --severity important|nit|pre-existing --verdict confirmed|rejected --summary TEXT
+                  [--where PATH:LINE] [--reason WHY]   (a finding from /keel:review, with the verifier's verdict)
+  keel review resolve <R-n> --fixed WHAT | --answered WHY
+  keel review list [--open] [--feature F]
   keel progress [FEATURE] [--json]           (feature, scope and development progress)
   keel scope start <FEATURE> [--files GLOBS] | widen <GLOB> --reason WHY | deps <DECISION> | clear | show
   keel check [--changed] [--strict] [--json]
@@ -174,7 +180,8 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
       }
       case 'feature': {
         const id = rest[0];
-        const o = Object.fromEntries(Object.entries(opts).map(([k, v]) => [k, one(v, k)]));
+        const evidence = [].concat(opts.evidence ?? []).filter((v) => v !== true).map((v) => String(v).trim()).filter(Boolean);
+        const o = Object.fromEntries(Object.entries(opts).filter(([k]) => k !== 'evidence').map(([k, v]) => [k, one(v, k)]));
         let r;
         if (sub === 'add') { r = addFeature(project, id, o); logEvent(project, 'feature.add', { feature: id, status: r.status }); }
         else if (sub === 'check') {
@@ -183,12 +190,18 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
         }
         else if (sub === 'set') {
           const before = loadFeatures(project)[id]?.status;
-          r = setFeature(project, id, { ...o, proof: (fid, f) => builtProblems(project, fid, f, { coverage, fingerprint }) });
+          r = setFeature(project, id, { ...o, proof: (fid, f) => [...builtProblems(project, fid, f, { coverage, fingerprint }), ...findingProblems(project, fid)] });
           if (o.status && before !== r.status) logEvent(project, 'feature.status', { feature: id, from: before, to: r.status });
           if (r.filesAdded) logEvent(project, 'feature.files', { feature: id, added: r.filesAdded, ...(o.reason ? { reason: o.reason } : {}) });
+        } else if (sub === 'verified' && opts.stale) {
+          if (id) fail('--stale verifies every stale feature; do not name one.');
+          const result = check(project);
+          const stale = Object.entries(loadFeatures(project)).filter(([, f]) => f.verified && fingerprint(project, f) !== f.verified.fingerprint).map(([fid]) => fid);
+          r = { verified: stale.map((fid) => markVerified(project, fid, o.command, result, evidence).id) };
+          for (const fid of r.verified) logEvent(project, 'feature.verified', { feature: fid, command: o.command, stale: true });
         } else if (sub === 'verified') {
-          r = markVerified(project, id, o.command, check(project));
-          logEvent(project, 'feature.verified', { feature: id, command: r.verified.command });
+          r = markVerified(project, id, o.command, check(project), evidence);
+          logEvent(project, 'feature.verified', { feature: id, command: r.verified.command, ...(evidence.length ? { evidence } : {}) });
         }
         else if (sub === 'show') { json({ id, ...getFeature(loadFeatures(project), id) }); return 0; }
         else if (sub === 'list') {
@@ -198,6 +211,17 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
         renderState(project);
         json(r);
         return 0;
+      }
+      case 'review': {
+        const o = Object.fromEntries(Object.entries(opts).map(([k, v]) => [k, one(v, k)]));
+        if (sub === 'add') { const r = addFinding(project, o); logEvent(project, 'review.finding', { id: r.id, feature: o.feature, severity: o.severity, verdict: o.verdict }); renderState(project); json(r); return 0; }
+        if (sub === 'resolve') { const r = resolveFinding(project, rest[0], o); logEvent(project, 'review.resolve', r); renderState(project); json(r); return 0; }
+        if (sub === 'list' || sub === undefined) {
+          const all = opts.open ? openFindings(project, o.feature) : loadReviews(project).findings.filter((f) => !o.feature || f.feature === o.feature);
+          io.out(all.length ? all.map(formatFinding).join('\n') : 'No review findings.');
+          return 0;
+        }
+        break;
       }
       case 'scope': {
         if (sub === 'start') { const r = startScope(project, rest[0], one(opts.files, 'files')); logEvent(project, 'scope.start', { feature: r.feature }); json(r); return 0; }
@@ -263,6 +287,12 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s + '\n
     if (e instanceof SyntaxError) { io.err(`keel: invalid JSON: ${e.message}`); return 1; }
     throw e;
   }
+}
+
+/** Open important findings stand between a feature and "built", like a check without a test. */
+function findingProblems(project, feature) {
+  return openFindings(project, feature).filter((f) => f.severity === 'important')
+    .map((f) => `open review finding R-${f.id}: ${f.summary} (fix it and run \`keel review resolve R-${f.id} --fixed "<what changed>"\`, or --answered "<why it stays>")`);
 }
 
 export function formatCheck(r) {

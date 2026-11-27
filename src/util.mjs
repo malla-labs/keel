@@ -116,3 +116,21 @@ export function slugify(title) {
     .slice(0, 80)
     .replace(/-+$/, '');
 }
+
+// `Decision: P-001` or a list, `Decision: D-001, P-004, P-006`. Every id in the list counts as cited.
+const CITE_LIST_RE = /\bDecision:\s*([A-Z]-\d+(?:\s*,\s*[A-Z]-\d+)*)/g;
+
+/** The decision ids a text cites, in order, with repeats. */
+export function citedDecisions(text) {
+  const ids = [];
+  for (const m of String(text).matchAll(CITE_LIST_RE)) ids.push(...m[1].split(',').map((s) => s.trim()));
+  return ids;
+}
+
+// `Q-3`, as written in code comments that point at an open question.
+const QUESTION_REF_RE = /\bQ-(\d+)\b/g;
+
+/** The question numbers a text names. */
+export function citedQuestions(text) {
+  return [...String(text).matchAll(QUESTION_REF_RE)].map((m) => Number(m[1]));
+}

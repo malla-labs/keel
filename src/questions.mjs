@@ -107,6 +107,7 @@ export function answerQuestion(project, idArg, opts) {
     saveFeatures(project, features);
   }
   store.open.splice(i, 1);
+  store.closed = [...(store.closed ?? []), { id, answered: date, by, ...(opts.decision ? { decision: opts.decision } : {}) }];
   writeJSON(project.paths.questions, store);
   renderOpenQuestions(project);
   return { id, answer, filed: path.relative(project.root, resolutionFile(project, date)) };
@@ -125,6 +126,7 @@ export function withdrawQuestion(project, idArg, opts) {
   const q = store.open[i];
   appendResolution(project, today(), `| Q-${id} | ${cell(q.question)} | Withdrawn: ${cell(reason)} | ${by} | — |`);
   store.open.splice(i, 1);
+  store.closed = [...(store.closed ?? []), { id, withdrawn: today(), by }];
   writeJSON(project.paths.questions, store);
   renderOpenQuestions(project);
   return { id, withdrawn: true };
